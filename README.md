@@ -52,7 +52,7 @@ cd android && ./gradlew testDebugUnitTest
   - cada peça vale a soma dos números;
   - ponte: +40;
   - hexágono: +50;
-  - abrir com triplo: +10 (abrir com 0-0-0: +40).
+  - a abertura vale só a soma dos pontos da pedra, sem bônus (abrir com 0-0-0 vale 0).
 - Penalidades:
   - cada compra custa −5, até 3 por vez;
   - passar custa −10, e só é permitido depois de 3 compras ou com o monte vazio.

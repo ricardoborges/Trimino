@@ -96,6 +96,20 @@ describe("TriminoGame", () => {
     expect(g.log.at(-1)!.points).toBeGreaterThanOrEqual(0);
   });
 
+  it("a abertura vale só a soma da pedra, sem bônus (0-0-0 vale 0)", () => {
+    for (const v of [[0, 0, 0], [5, 5, 5], [1, 2, 4]] as [number, number, number][]) {
+      const g = started(3);
+      const p = g.current;
+      const tile = fullSet().find((t) => t.v.join() === v.join())!;
+      p.hand = [tile, p.hand[0].id === tile.id ? p.hand[1] : p.hand[0]];
+      const before = p.score;
+      const res = g.place(p.id, tile.id, 0, 0, 0);
+      expect(res.points).toBe(v[0] + v[1] + v[2]);
+      expect(res.bonuses).toEqual([]);
+      expect(p.score - before).toBe(v[0] + v[1] + v[2]);
+    }
+  });
+
   it("as rodadas seguintes começam com o próximo jogador", () => {
     const g = started(11, 10_000);
     const first = g.current.id;

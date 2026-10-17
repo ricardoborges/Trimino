@@ -2,13 +2,11 @@
 
 import { cellKey, cellVertices, cellsAroundVertex, edgeNeighbors, vertexKey } from "./geometry.ts";
 import type { BoardCell, LogEntry, Move, Phase, RoundSummary } from "./protocol.ts";
-import { fullSet, isTriple, rotated, tileSum, type Tile } from "./tiles.ts";
+import { fullSet, rotated, tileSum, type Tile } from "./tiles.ts";
 
 export const SCORE = {
   hexagon: 50,
   bridge: 40,
-  openingTriple: 10,
-  openingZeroTriple: 40,
   emptyHand: 25,
   drawPenalty: 5,
   passPenalty: 10,
@@ -261,13 +259,8 @@ export class TriminoGame {
     const bonuses: string[] = [];
     let points = tileSum(tile);
 
-    if (this.board.size === 0) {
-      if (isTriple(tile)) {
-        const bonus = tile.v[0] === 0 ? SCORE.openingZeroTriple : SCORE.openingTriple;
-        points += bonus;
-        bonuses.push(`abertura com triplo +${bonus}`);
-      }
-    } else {
+    // A abertura vale só a soma dos pontos da pedra (sem bônus): abrir com 0-0-0 vale 0.
+    if (this.board.size > 0) {
       // Ponte: um canto encosta numa peça que não é vizinha por aresta.
       const neighborVerts = new Set<string>();
       for (const [nr, nc] of edgeNeighbors(r, c))
