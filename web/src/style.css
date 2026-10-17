@@ -738,14 +738,14 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .site-footer .site-brand { font-size: 17px; }
 
 /* revelação ao rolar */
-.reveal { opacity: 0; transform: translateY(28px); transition: opacity 0.9s var(--ease-out), transform 0.9s var(--ease-out); }
-.reveal.in { opacity: 1; transform: none; }
-.step-grid .reveal:nth-child(2), .bento .reveal:nth-child(3) { transition-delay: 0.08s; }
-.step-grid .reveal:nth-child(3), .bento .reveal:nth-child(4) { transition-delay: 0.16s; }
-.step-grid .reveal:nth-child(4), .bento .reveal:nth-child(5) { transition-delay: 0.24s; }
+.scroll-in { opacity: 0; transform: translateY(28px); transition: opacity 0.9s var(--ease-out), transform 0.9s var(--ease-out); }
+.scroll-in.in { opacity: 1; transform: none; }
+.step-grid .scroll-in:nth-child(2), .bento .scroll-in:nth-child(3) { transition-delay: 0.08s; }
+.step-grid .scroll-in:nth-child(3), .bento .scroll-in:nth-child(4) { transition-delay: 0.16s; }
+.step-grid .scroll-in:nth-child(4), .bento .scroll-in:nth-child(5) { transition-delay: 0.24s; }
 
 @media (prefers-reduced-motion: reduce) {
-  .reveal { opacity: 1; transform: none; transition: none; }
+  .scroll-in { opacity: 1; transform: none; transition: none; }
   .hero-copy > *, .hero-canvas, .hero-tile { animation: none; }
   .eyebrow-dot, .scroll-cue span, .cam::before { animation: none; }
 }

@@ -296,7 +296,7 @@ function decorateLanding(): void {
     },
     { root: $("site"), rootMargin: "0px 0px -8% 0px" },
   );
-  for (const el of document.querySelectorAll(".reveal")) io.observe(el);
+  for (const el of document.querySelectorAll(".scroll-in")) io.observe(el);
 
   // Navegação transparente sobre o herói; ganha fundo ao rolar.
   const site = $("site");
