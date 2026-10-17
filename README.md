@@ -21,6 +21,8 @@ npm run dev:web           # cliente em http://localhost:5173 (proxy de /ws para 
 
 Abra duas abas em `http://localhost:5173/?sala=TESTE` para jogar contra si mesmo.
 
+Se a porta 8080 estiver ocupada (por exemplo, pelo Docker), use outra nos dois comandos: `PORT=8787 npm run dev:server` e `PORT=8787 npm run dev:web`.
+
 Em produção, rode `npm run build`. Depois, `npm start` sobe o servidor, que também entrega o cliente compilado em `web/dist`.
 
 **Android:** abra a pasta `android/` no Android Studio ou rode `./gradlew assembleDebug`.
