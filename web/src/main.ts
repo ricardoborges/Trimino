@@ -461,7 +461,6 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
     renderSheet(s);
     renderTokens(s);
     if (!s.tokens && !$("tokens-panel").hidden) openPanel(null);
-    $("pool").textContent = s.phase === "lobby" ? "Aguardando" : `Monte: ${s.poolCount}`;
 
     // banner / overlay
     const me = s.players.find((p) => p.id === s.you.id);
