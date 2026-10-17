@@ -1,7 +1,8 @@
 import "./style.css";
-import { rotated, type GameState, type ServerMessage } from "@trimino/shared";
+import { rotated, type GameState, type ServerMessage, type Values } from "@trimino/shared";
 import { BoardView, handTileSvg, type Board, type Ghost } from "./board.ts";
 import { Board3D, webglAvailable } from "./board3d/Board3D.ts";
+import { tilePhoto } from "./board3d/tilePhotos.ts";
 import { Connection } from "./net.ts";
 import { Mesh } from "./rtc.ts";
 
@@ -261,7 +262,7 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
       ...s.you.hand.map((t) => {
         const b = document.createElement("button");
         b.className = `hand-tile${t.id === selectedTile ? " selected" : ""}`;
-        b.append(handTileSvg(t.v));
+        b.append(tileVisual(t.v));
         b.onclick = () => {
           selectedTile = selectedTile === t.id ? null : t.id;
           preview = null;
@@ -373,7 +374,7 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
       b.className = `lot${pick ? " revealed" : ""}${pick && pick.playerId === lot.winnerId ? " winner" : ""}`;
       if (pick) {
         b.disabled = true;
-        b.append(handTileSvg(pick.tile.v));
+        b.append(tileVisual(pick.tile.v));
         const who = document.createElement("span");
         who.textContent = nameOf(pick.playerId);
         b.append(who);
@@ -392,6 +393,18 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
     mesh.closeAll();
     conn.close();
   });
+}
+
+/** Peça da mão com o mesmo visual 3D do tabuleiro; desenho SVG se não houver WebGL. */
+function tileVisual(v: Values): Element {
+  const url = webglAvailable() ? tilePhoto(v) : null;
+  if (!url) return handTileSvg(v);
+  const img = document.createElement("img");
+  img.className = "tile-photo";
+  img.src = url;
+  img.alt = v.join("-");
+  img.draggable = false;
+  return img;
 }
 
 function colorOfSeat(s: GameState, playerId: string): string {

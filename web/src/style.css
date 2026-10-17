@@ -149,7 +149,7 @@ label.check { display: flex; align-items: center; gap: 8px; }
   position: absolute; left: 0; right: 0; bottom: 3px; font-size: 11px; color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.lot .hand-svg { width: 80%; margin: 4px auto 0; }
+.lot .hand-svg, .lot .tile-photo { width: 86%; margin: 2px auto 0; }
 
 /* lateral */
 .side {
@@ -188,13 +188,14 @@ label.check { display: flex; align-items: center; gap: 8px; }
 }
 .hand { display: flex; gap: 6px; overflow-x: auto; flex: 1; min-width: 0; padding: 4px 2px; }
 .hand-tile {
-  flex: none; width: 64px; padding: 4px; border-radius: 10px; border: 2px solid transparent;
+  flex: none; width: 92px; padding: 4px; border-radius: 10px; border: 2px solid transparent;
   background: transparent; transition: transform 0.12s ease;
 }
 .hand-tile:hover { transform: translateY(-3px); }
 .hand-tile.selected { border-color: var(--accent); background: rgba(242, 179, 61, 0.12); transform: translateY(-4px); }
 .hand-tile.dim { opacity: 0.4; }
 .hand-svg { width: 100%; display: block; }
+.tile-photo { width: 100%; display: block; filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.45)); pointer-events: none; user-select: none; }
 .hand-svg .tile-num { font-size: 16px; }
 .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 
@@ -215,6 +216,6 @@ label.check { display: flex; align-items: center; gap: 8px; }
   .dock { flex-direction: column; align-items: stretch; gap: 6px; }
   .actions { justify-content: stretch; }
   .actions button { flex: 1; padding: 8px 6px; }
-  .hand-tile { width: 56px; }
+  .hand-tile { width: 66px; padding: 2px; }
   .lots { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }

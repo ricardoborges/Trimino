@@ -3,53 +3,13 @@
 
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { cellAt, cellKey, cellVertices, isUp, vertexToPixel, type BoardCell, type Values } from "@trimino/shared";
+import { cellAt, cellKey, isUp, type BoardCell } from "@trimino/shared";
 import type { Board, Ghost } from "../board.ts";
-import { digitTexture, feltTexture, glowTexture, ivoryTexture } from "./textures.ts";
-
-const H = Math.sqrt(3) / 2;
-const THICK = 0.12; // espessura total da peça
-const BEVEL = 0.03;
-const GAP = 0.03; // sulco entre peças vizinhas
-const CORNER = 0.07; // raio dos cantos arredondados
-const DIGIT_SIZE = 0.28;
-const DIGIT_PULL = 0.43; // quanto o número é puxado do canto para o centro
-const ACCENT = new THREE.Color("#f2b33d");
+import { feltTexture, glowTexture } from "./textures.ts";
+import { ACCENT, GAP, LIGHTING, THICK, TileKit, cellGeometry, roundedTriangle } from "./tileKit.ts";
 
 const PITCH_3D = THREE.MathUtils.degToRad(52);
 const PITCH_TOP = THREE.MathUtils.degToRad(89);
-
-type Corners = [THREE.Vector2, THREE.Vector2, THREE.Vector2];
-
-/** Cantos da célula no plano (x, z) e o centroide. */
-function cellGeometry(r: number, c: number): { pts: Corners; center: THREE.Vector2 } {
-  const pts = cellVertices(r, c).map((v) => new THREE.Vector2(...vertexToPixel(v, 1))) as Corners;
-  const center = new THREE.Vector2().add(pts[0]).add(pts[1]).add(pts[2]).divideScalar(3);
-  return { pts, center };
-}
-
-/** Triângulo de cantos arredondados, centrado no centroide, encolhido por `inset` em cada aresta. */
-function roundedTriangle(up: boolean, inset: number): THREE.Shape {
-  const s = 1 - 2 * Math.sqrt(3) * inset;
-  const raw = up
-    ? [[0, (-2 * H) / 3], [0.5, H / 3], [-0.5, H / 3]]
-    : [[0, (2 * H) / 3], [-0.5, -H / 3], [0.5, -H / 3]];
-  // No Shape, y = -z para que rotateX(-90°) leve o desenho ao plano da mesa.
-  const p = raw.map(([x, z]) => new THREE.Vector2(x * s, -z * s));
-  const shape = new THREE.Shape();
-  for (let i = 0; i < 3; i++) {
-    const prev = p[(i + 2) % 3];
-    const cur = p[i];
-    const next = p[(i + 1) % 3];
-    const a = cur.clone().add(prev.clone().sub(cur).setLength(CORNER));
-    const b = cur.clone().add(next.clone().sub(cur).setLength(CORNER));
-    if (i === 0) shape.moveTo(a.x, a.y);
-    else shape.lineTo(a.x, a.y);
-    shape.quadraticCurveTo(cur.x, cur.y, b.x, b.y);
-  }
-  shape.closePath();
-  return shape;
-}
 
 /** Contorno fino (anel triangular) e preenchimento de um encaixe livre, deitados na mesa. */
 function slotGeometries(up: boolean): { ring: THREE.BufferGeometry; fill: THREE.BufferGeometry } {
@@ -60,20 +20,6 @@ function slotGeometries(up: boolean): { ring: THREE.BufferGeometry; fill: THREE.
   const ring = new THREE.ShapeGeometry(ringShape, 6).rotateX(-Math.PI / 2);
   const fill = new THREE.ShapeGeometry(outer, 6).rotateX(-Math.PI / 2);
   return { ring, fill };
-}
-
-function tileGeometry(up: boolean): THREE.BufferGeometry {
-  const geo = new THREE.ExtrudeGeometry(roundedTriangle(up, GAP / 2 + BEVEL), {
-    depth: THICK - 2 * BEVEL,
-    bevelEnabled: true,
-    bevelThickness: BEVEL,
-    bevelSize: BEVEL,
-    bevelSegments: 4,
-    curveSegments: 6,
-  });
-  geo.rotateX(-Math.PI / 2);
-  geo.translate(0, BEVEL, 0);
-  return geo;
 }
 
 interface TileEntry {
@@ -103,18 +49,12 @@ export class Board3D implements Board {
   private hoverKey: string | null = null;
   private renderedOnce = false;
 
-  private geo = { up: tileGeometry(true), down: tileGeometry(false) };
-  private digitGeo = new THREE.PlaneGeometry(DIGIT_SIZE, DIGIT_SIZE).rotateX(-Math.PI / 2);
+  private kit = new TileKit();
   private glowGeo = new THREE.PlaneGeometry(1.9, 1.9).rotateX(-Math.PI / 2);
   private slotGeo = { up: slotGeometries(true), down: slotGeometries(false) };
   private boardCenter = new THREE.Vector2();
   private boardRadius = 1;
-  private gemGeo = new THREE.CylinderGeometry(0.036, 0.04, 0.008, 24);
-  private tileMat: THREE.MeshPhysicalMaterial;
-  private previewMat: THREE.MeshPhysicalMaterial;
-  private digitMats: THREE.MeshStandardMaterial[];
   private glowTex = glowTexture();
-  private gemMats = new Map<string, THREE.MeshPhysicalMaterial>();
 
   private raycaster = new THREE.Raycaster();
   private ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -138,14 +78,14 @@ export class Board3D implements Board {
     host.append(vignette);
 
     // Sala escura; a mesa some na penumbra fora do cone do abajur.
-    const bg = new THREE.Color("#0a1712");
+    const bg = new THREE.Color(LIGHTING.roomColor);
     this.scene.background = bg;
-    this.scene.fog = new THREE.FogExp2(bg, 0.045);
+    this.scene.fog = new THREE.FogExp2(bg, LIGHTING.fogDensity);
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = 0.22;
+    this.scene.environmentIntensity = LIGHTING.envIntensity;
 
-    this.lamp = new THREE.SpotLight("#ffeccc", 4.2, 0, 0.5, 0.75, 0);
+    this.lamp = new THREE.SpotLight(LIGHTING.lampColor, LIGHTING.lampIntensity, 0, 0.5, 0.75, 0);
     this.lamp.castShadow = true;
     this.lamp.shadow.mapSize.set(2048, 2048);
     this.lamp.shadow.bias = -0.0004;
@@ -153,9 +93,9 @@ export class Board3D implements Board {
     this.lamp.shadow.camera.near = 4;
     this.lamp.shadow.camera.far = 40;
     this.scene.add(this.lamp, this.lamp.target);
-    const fill = new THREE.DirectionalLight("#9fc4ff", 0.18);
+    const fill = new THREE.DirectionalLight(LIGHTING.fillColor, LIGHTING.fillIntensity);
     fill.position.set(6, 5, 8);
-    this.scene.add(fill, new THREE.HemisphereLight("#fff6e5", "#0b2219", 0.12));
+    this.scene.add(fill, new THREE.HemisphereLight(LIGHTING.hemiSky, LIGHTING.hemiGround, LIGHTING.hemiIntensity));
 
     const felt = feltTexture();
     felt.repeat.set(40, 40);
@@ -174,33 +114,6 @@ export class Board3D implements Board {
     );
     table.receiveShadow = true;
     this.scene.add(table);
-
-    const ivory = ivoryTexture();
-    ivory.repeat.set(1.3, 1.3);
-    this.tileMat = new THREE.MeshPhysicalMaterial({
-      map: ivory,
-      color: "#ffffff",
-      roughness: 0.3,
-      clearcoat: 0.85,
-      clearcoatRoughness: 0.12,
-      sheen: 0.25,
-      sheenColor: new THREE.Color("#fff3d6"),
-    });
-    this.previewMat = this.tileMat.clone();
-    this.previewMat.emissive = ACCENT.clone();
-    this.previewMat.emissiveIntensity = 0.07;
-
-    this.digitMats = [0, 1, 2, 3, 4, 5].map(
-      (n) =>
-        new THREE.MeshStandardMaterial({
-          map: digitTexture(n),
-          transparent: true,
-          roughness: 0.5,
-          depthWrite: false,
-          polygonOffset: true,
-          polygonOffsetFactor: -2,
-        }),
-    );
 
     this.lastGlow = new THREE.Mesh(
       this.glowGeo,
@@ -229,7 +142,7 @@ export class Board3D implements Board {
     for (const cell of board) {
       const k = cellKey(cell.r, cell.c);
       if (this.tiles.has(k)) continue;
-      const group = this.buildTile(cell.r, cell.c, cell.vals, this.tileMat, colorOf(cell.by));
+      const group = this.kit.build(cell.r, cell.c, cell.vals, this.kit.tileMat, colorOf(cell.by));
       this.scene.add(group);
       // Só anima o que chegou depois da primeira renderização (não ao entrar numa partida em andamento).
       this.tiles.set(k, { group, key: k, dropStart: this.renderedOnce && board.length > 1 ? now : null });
@@ -271,7 +184,7 @@ export class Board3D implements Board {
       ring.userData = { key: k, slotRing: true, active: !!g.vals };
       this.ghostLayer.add(fill, ring);
       if (g.vals) {
-        const preview = this.buildTile(g.r, g.c, g.vals, this.previewMat, null);
+        const preview = this.kit.build(g.r, g.c, g.vals, this.kit.previewMat);
         preview.userData = { preview: true };
         this.ghostLayer.add(preview);
       }
@@ -318,47 +231,6 @@ export class Board3D implements Board {
     const top = this.goal.pitch < PITCH_TOP - 0.01;
     this.goal.pitch = top ? PITCH_TOP : PITCH_3D;
     return top;
-  }
-
-  // ---------------- construção ----------------
-
-  private buildTile(r: number, c: number, vals: Values, mat: THREE.Material, owner: string | null): THREE.Group {
-    const up = isUp(r, c);
-    const { pts, center } = cellGeometry(r, c);
-    const group = new THREE.Group();
-    group.position.set(center.x, 0, center.y);
-
-    const body = new THREE.Mesh(up ? this.geo.up : this.geo.down, mat);
-    body.castShadow = true;
-    body.receiveShadow = true;
-    group.add(body);
-
-    pts.forEach((p, i) => {
-      const local = p.clone().sub(center);
-      const pos = local.clone().multiplyScalar(1 - DIGIT_PULL);
-      const digit = new THREE.Mesh(this.digitGeo, this.digitMats[vals[i]]);
-      digit.position.set(pos.x, THICK + 0.0015, pos.y);
-      // O "alto" do número aponta para o seu canto, como nas peças reais.
-      digit.rotation.y = Math.atan2(-local.x, -local.y);
-      digit.renderOrder = 1;
-      group.add(digit);
-    });
-
-    if (owner) {
-      const gem = new THREE.Mesh(this.gemGeo, this.gemMaterial(owner));
-      gem.position.y = THICK + 0.002;
-      group.add(gem);
-    }
-    return group;
-  }
-
-  private gemMaterial(color: string): THREE.MeshPhysicalMaterial {
-    let m = this.gemMats.get(color);
-    if (!m) {
-      m = new THREE.MeshPhysicalMaterial({ color, metalness: 0.2, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 });
-      this.gemMats.set(color, m);
-    }
-    return m;
   }
 
   // ---------------- loop ----------------
@@ -523,10 +395,13 @@ export class Board3D implements Board {
   }
 }
 
+let webgl: boolean | undefined;
 export function webglAvailable(): boolean {
-  try {
-    return !!document.createElement("canvas").getContext("webgl2");
-  } catch {
-    return false;
-  }
+  if (webgl === undefined)
+    try {
+      webgl = !!document.createElement("canvas").getContext("webgl2");
+    } catch {
+      webgl = false;
+    }
+  return webgl;
 }
