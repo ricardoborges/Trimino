@@ -23,6 +23,20 @@ export interface Lottery {
   winnerId: string | null;
 }
 
+/**
+ * Linha do histórico, estruturada para o cliente formatar.
+ * Ex.: { actor: "Ana", action: "jogou", tile: [1, 5, 5], points: 11 } → "**Ana jogou:** <1-5-5> | +11"
+ * Sem `actor`, é um aviso geral e `action` é o texto inteiro.
+ */
+export interface LogEntry {
+  actor?: string;
+  action: string;
+  tile?: Values;
+  points?: number;
+  /** Detalhe extra, como os bônus ("ponte +40"). */
+  note?: string;
+}
+
 export interface BoardCell {
   r: number;
   c: number;
@@ -57,7 +71,7 @@ export interface GameState {
   poolCount: number;
   board: BoardCell[];
   lottery: Lottery | null;
-  log: string[];
+  log: LogEntry[];
   roundSummary: RoundSummary | null;
   you: {
     id: string;

@@ -184,6 +184,17 @@ label.check { display: flex; align-items: center; gap: 8px; }
 }
 .log-panel header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--felt-line); }
 .log-panel .log { padding: 6px 12px 10px; }
+#log li { color: var(--text); }
+#log li b { font-weight: 700; }
+#log small { color: var(--muted); }
+/* A peça no histórico usa o fundo creme da peça real, para as cores dos números (o 0 é escuro) serem legíveis. */
+.log-tile {
+  display: inline-block; padding: 0 6px; border-radius: 6px; background: #f3ead6; color: #6b5d43;
+  font-weight: 800; letter-spacing: 0.02em; font-variant-numeric: tabular-nums;
+}
+.pts { font-weight: 700; }
+.pts.pos { color: #5aa9ff; }
+.pts.neg { color: #ff6b5e; }
 .chat input {
   width: 100%; background: var(--felt-deep); color: var(--text); border: 1px solid var(--felt-line);
   border-radius: 10px; padding: 10px; font-size: 16px;

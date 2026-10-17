@@ -24,6 +24,10 @@ val ProtocolJson = Json {
 
 @Serializable data class Lottery(val slots: Int, val picks: List<LotPick>, val winnerId: String? = null)
 
+/** Linha do histórico (o app ainda não exibe; mantido para o protocolo decodificar). */
+@Serializable
+data class LogEntry(val actor: String? = null, val action: String, val tile: List<Int>? = null, val points: Int? = null, val note: String? = null)
+
 @Serializable data class BoardCell(val r: Int, val c: Int, val vals: List<Int>, val tileId: Int, val by: String)
 
 @Serializable
@@ -60,7 +64,7 @@ data class GameState(
   val poolCount: Int,
   val board: List<BoardCell>,
   val lottery: Lottery? = null,
-  val log: List<String>,
+  val log: List<LogEntry>,
   val roundSummary: RoundSummary? = null,
   val you: You,
 )

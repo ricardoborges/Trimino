@@ -92,6 +92,8 @@ describe("TriminoGame", () => {
     expect(() => g.place(p.id, last.id, 2, 2, 0)).toThrow();
     g.place(p.id, last.id, 0, 0, 1);
     expect(g.board.size).toBe(1);
+    expect(g.log.at(-1)).toMatchObject({ actor: p.name, action: "jogou", tile: last.v });
+    expect(g.log.at(-1)!.points).toBeGreaterThanOrEqual(0);
   });
 
   it("as rodadas seguintes começam com o próximo jogador", () => {

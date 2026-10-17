@@ -1,7 +1,7 @@
 // Regras do Triminó. Roda no servidor; os clientes apenas exibem o estado.
 
 import { cellKey, cellVertices, cellsAroundVertex, edgeNeighbors, vertexKey } from "./geometry.ts";
-import type { BoardCell, Move, Phase, RoundSummary } from "./protocol.ts";
+import type { BoardCell, LogEntry, Move, Phase, RoundSummary } from "./protocol.ts";
 import { fullSet, isTriple, rotated, tileSum, type Tile } from "./tiles.ts";
 
 export const SCORE = {
@@ -63,7 +63,7 @@ export class TriminoGame {
   /** Índice de quem abriu a rodada atual; a próxima rodada começa com o seguinte. */
   private starter = 0;
   roundSummary: RoundSummary | null = null;
-  log: string[] = [];
+  log: LogEntry[] = [];
 
   constructor(
     players: { id: string; name: string }[],
@@ -74,7 +74,7 @@ export class TriminoGame {
       throw new RuleError(`São necessários de ${MIN_PLAYERS} a ${MAX_PLAYERS} jogadores.`);
     this.players = players.map((p) => ({ ...p, hand: [], score: 0 }));
     this.lotteryPool = this.shuffled().slice(0, LOTTERY_SLOTS);
-    this.addLog("Sorteio: cada jogador escolhe uma pedra. A maior começa.");
+    this.addLog({ action: "Sorteio: cada jogador escolhe uma pedra. A maior começa." });
   }
 
   private shuffled(): Tile[] {
@@ -97,11 +97,11 @@ export class TriminoGame {
     if (this.lotteryPicks.some((x) => x.slot === slot)) throw new RuleError("Essa pedra já foi escolhida.");
     const tile = this.lotteryPool[slot];
     this.lotteryPicks.push({ playerId, slot, tile });
-    this.addLog(`${p.name} tirou ${tile.v.join("-")}.`);
+    this.addLog({ actor: p.name, action: "tirou", tile: tile.v });
     if (this.lotteryPicks.length === this.players.length) {
       const best = this.lotteryPicks.reduce((a, b) => (lotRank(b.tile) > lotRank(a.tile) ? b : a));
       this.lotteryWinnerId = best.playerId;
-      this.addLog(`${this.player(best.playerId)!.name} tirou a maior pedra e começa!`);
+      this.addLog({ actor: this.player(best.playerId)!.name, action: "tirou a maior pedra e começa!" });
     }
   }
 
@@ -141,7 +141,7 @@ export class TriminoGame {
     for (const p of this.players) p.hand = this.pool.splice(0, n);
 
     this.turn = this.starter;
-    this.addLog(`Rodada ${this.round}: ${this.current.name} começa com a peça que quiser.`);
+    this.addLog({ action: `Rodada ${this.round}: ${this.current.name} começa com a peça que quiser.` });
   }
 
   // ---------- consultas ----------
@@ -248,7 +248,7 @@ export class TriminoGame {
 
     p.score += points;
     this.consecutivePasses = 0;
-    this.addLog(`${p.name} jogou ${tile.v.join("-")}: +${points}${bonuses.length ? ` (${bonuses.join(", ")})` : ""}.`);
+    this.addLog({ actor: p.name, action: "jogou", tile: tile.v, points, note: bonuses.length ? bonuses.join(", ") : undefined });
 
     if (p.hand.length === 0) this.endRound(p, "emptyHand");
     else this.nextTurn();
@@ -262,7 +262,7 @@ export class TriminoGame {
     p.hand.push(tile);
     p.score -= SCORE.drawPenalty;
     this.drawsThisTurn++;
-    this.addLog(`${p.name} comprou uma peça (−${SCORE.drawPenalty}).`);
+    this.addLog({ actor: p.name, action: "comprou uma peça", points: -SCORE.drawPenalty });
     return tile;
   }
 
@@ -271,7 +271,7 @@ export class TriminoGame {
     const p = this.current;
     p.score -= SCORE.passPenalty;
     this.consecutivePasses++;
-    this.addLog(`${p.name} passou a vez (−${SCORE.passPenalty}).`);
+    this.addLog({ actor: p.name, action: "passou a vez", points: -SCORE.passPenalty });
     if (this.pool.length === 0 && this.consecutivePasses >= this.players.length) this.endBlocked();
     else this.nextTurn();
   }
@@ -287,16 +287,17 @@ export class TriminoGame {
     const points = reason === "emptyHand" ? SCORE.emptyHand + rest : rest - winner.hand.reduce((a, t) => a + tileSum(t), 0);
     winner.score += points;
     this.roundSummary = { winnerId: winner.id, reason, points };
-    this.addLog(
-      reason === "emptyHand"
-        ? `${winner.name} esvaziou a mão e ganhou +${points}!`
-        : `Jogo travado. ${winner.name} tinha menos pontos na mão: +${points}.`,
-    );
+    if (reason === "blocked") this.addLog({ action: "Jogo travado: ninguém consegue jogar." });
+    this.addLog({
+      actor: winner.name,
+      action: reason === "emptyHand" ? "esvaziou a mão" : "tinha menos pontos na mão",
+      points,
+    });
     const top = Math.max(...this.players.map((p) => p.score));
     if (top >= this.targetScore) {
       this.phase = "gameOver";
       const champ = this.players.find((p) => p.score === top)!;
-      this.addLog(`🏆 ${champ.name} venceu o jogo com ${top} pontos!`);
+      this.addLog({ actor: `🏆 ${champ.name}`, action: "venceu o jogo!", note: `${top} pontos` });
     } else {
       this.phase = "roundOver";
     }
@@ -308,8 +309,8 @@ export class TriminoGame {
     this.endRound(winner, "blocked");
   }
 
-  private addLog(line: string): void {
-    this.log.push(line);
+  private addLog(entry: LogEntry): void {
+    this.log.push(entry);
     if (this.log.length > 50) this.log.shift();
   }
 }

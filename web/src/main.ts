@@ -1,5 +1,6 @@
 import "./style.css";
-import { rotated, type GameState, type ServerMessage, type Values } from "@trimino/shared";
+import { rotated, type GameState, type LogEntry, type ServerMessage, type Values } from "@trimino/shared";
+import { DIGIT_COLORS } from "./board3d/textures.ts";
 import { BoardView, handTileSvg, type Board, type Ghost } from "./board.ts";
 import { Board3D, webglAvailable } from "./board3d/Board3D.ts";
 import { tilePhoto } from "./board3d/tilePhotos.ts";
@@ -56,7 +57,7 @@ let selectedTile: number | null = null;
 let preview: { r: number; c: number; rot: number } | null = null;
 let lastBoardSize = -1;
 let lastRound = -1;
-let seenLog: string[] = [];
+let seenLog: string[] = []; // entradas serializadas, para comparar com o próximo estado
 
 async function start(name: string, room: string, withMedia: boolean): Promise<void> {
   const board: Board = webglAvailable() ? new Board3D($("table")) : new BoardView($("table"));
@@ -291,11 +292,12 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
 
     // log
     // O servidor manda as últimas linhas; só acrescentamos as novas.
-    let overlap = Math.min(seenLog.length, s.log.length);
+    const keys = s.log.map((e) => JSON.stringify(e));
+    let overlap = Math.min(seenLog.length, keys.length);
     const same = (a: string[], b: string[]) => a.every((x, i) => x === b[i]);
-    while (overlap > 0 && !same(seenLog.slice(-overlap), s.log.slice(0, overlap))) overlap--;
-    for (const line of s.log.slice(overlap)) addLog(line);
-    seenLog = s.log;
+    while (overlap > 0 && !same(seenLog.slice(-overlap), keys.slice(0, overlap))) overlap--;
+    for (const entry of s.log.slice(overlap)) addLog(entry);
+    seenLog = keys;
     labelVideos();
   }
 
@@ -434,13 +436,48 @@ function addChat(name: string, text: string): void {
   list.scrollTop = list.scrollHeight;
 }
 
-/** Linha do histórico da partida (painel aberto pelo botão no topo). */
-function addLog(text: string, cls = ""): void {
+/**
+ * Linha do histórico: "**Ana jogou:** <1-5-5> | +11".
+ * Nome e ação em negrito; cada número da peça na cor dele; pontos em azul (ganho) ou vermelho (perda).
+ */
+function addLog(e: LogEntry): void {
   const li = document.createElement("li");
-  li.textContent = text;
-  li.className = cls;
-  $("log").append(li);
-  $("log").scrollTop = $("log").scrollHeight;
+  if (e.actor) {
+    const b = document.createElement("b");
+    b.textContent = `${e.actor} ${e.action}${e.tile ? ":" : ""}`;
+    li.append(b);
+  } else {
+    li.append(e.action);
+  }
+  if (e.tile) {
+    const tile = document.createElement("span");
+    tile.className = "log-tile";
+    tile.setAttribute("aria-label", e.tile.join("-"));
+    tile.append("<");
+    e.tile.forEach((n, i) => {
+      if (i) tile.append("-");
+      const d = document.createElement("span");
+      d.textContent = String(n);
+      d.style.color = DIGIT_COLORS[n];
+      tile.append(d);
+    });
+    tile.append(">");
+    li.append(" ", tile);
+  }
+  if (e.points !== undefined) {
+    const pts = document.createElement("span");
+    pts.className = e.points < 0 ? "pts neg" : "pts pos";
+    pts.textContent = e.points < 0 ? `−${-e.points}` : `+${e.points}`;
+    li.append(" | ", pts);
+  }
+  if (e.note) {
+    const note = document.createElement("small");
+    note.textContent = ` (${e.note})`;
+    li.append(note);
+  }
+  const log = $("log");
+  log.append(li);
+  log.scrollTop = log.scrollHeight;
 }
 
 let toastTimer = 0;
