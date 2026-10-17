@@ -27,6 +27,7 @@
       <header class="topbar">
         <strong class="brand">Triminó</strong>
         <button id="room-code" class="chip" title="Copiar link da sala"></button>
+        <button id="log-toggle" class="chip" title="Histórico da partida" aria-expanded="false" aria-controls="log-panel">📜<span class="label"> Histórico</span></button>
         <span id="status" class="status"></span>
         <ol id="scores" class="scores"></ol>
       </header>
@@ -48,12 +49,20 @@
             <button id="mic" class="tool">🎤</button>
             <button id="cam" class="tool">📷</button>
           </div>
-          <ul id="log" class="log"></ul>
+          <ul id="chat-log" class="log" aria-label="Chat"></ul>
           <form id="chat-form" class="chat">
             <input name="text" maxlength="300" placeholder="Mensagem…" autocomplete="off" />
           </form>
         </aside>
       </main>
+
+      <section id="log-panel" class="log-panel" hidden aria-label="Histórico da partida">
+        <header>
+          <strong>Histórico da partida</strong>
+          <button id="log-close" class="chip" title="Fechar">✕</button>
+        </header>
+        <ul id="log" class="log"></ul>
+      </section>
 
       <footer class="dock">
         <div id="hand" class="hand"></div>

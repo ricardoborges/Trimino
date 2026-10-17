@@ -106,7 +106,7 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
         render();
         break;
       case "chat":
-        addLog(`${msg.name}: ${msg.text}`, "chat");
+        addChat(msg.name, msg.text);
         break;
       case "error":
         toast(msg.message);
@@ -191,6 +191,18 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
   $("draw").onclick = () => conn.send({ t: "draw" });
   $("pass").onclick = () => conn.send({ t: "pass" });
   $("fit").onclick = () => state && board.fit(state.board);
+  const setLogOpen = (open: boolean) => {
+    $("log-panel").hidden = !open;
+    $("log-toggle").setAttribute("aria-expanded", String(open));
+    $("log-toggle").classList.toggle("active", open);
+    if (open) $("log").scrollTop = $("log").scrollHeight;
+  };
+  $("log-toggle").onclick = () => setLogOpen($("log-panel").hidden);
+  $("log-close").onclick = () => setLogOpen(false);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("log-panel").hidden) setLogOpen(false);
+  });
+
   $("room-code").onclick = async () => {
     await navigator.clipboard?.writeText(location.href).catch(() => {});
     toast("Link da sala copiado!");
@@ -411,6 +423,18 @@ function colorOfSeat(s: GameState, playerId: string): string {
   return PLAYER_COLORS[Math.max(0, s.players.findIndex((p) => p.id === playerId)) % 4];
 }
 
+/** Mensagem de chat na lateral. */
+function addChat(name: string, text: string): void {
+  const li = document.createElement("li");
+  const who = document.createElement("b");
+  who.textContent = `${name}: `;
+  li.append(who, text);
+  const list = $("chat-log");
+  list.append(li);
+  list.scrollTop = list.scrollHeight;
+}
+
+/** Linha do histórico da partida (painel aberto pelo botão no topo). */
 function addLog(text: string, cls = ""): void {
   const li = document.createElement("li");
   li.textContent = text;

@@ -3,7 +3,7 @@
 
 import * as THREE from "three";
 import { cellVertices, isUp, vertexToPixel, type Values } from "@trimino/shared";
-import { digitTexture, ivoryTexture } from "./textures.ts";
+import { digitTexture } from "./textures.ts";
 
 export const H = Math.sqrt(3) / 2;
 export const THICK = 0.12; // espessura total da peça
@@ -62,26 +62,17 @@ function tileGeometry(up: boolean): THREE.BufferGeometry {
 
 /** Geometrias, materiais e montagem de uma peça. Uma instância por renderizador. */
 export class TileKit {
-  readonly tileMat: THREE.MeshPhysicalMaterial;
-  readonly previewMat: THREE.MeshPhysicalMaterial;
+  readonly tileMat: THREE.MeshStandardMaterial;
+  readonly previewMat: THREE.MeshStandardMaterial;
   private geo = { up: tileGeometry(true), down: tileGeometry(false) };
   private digitGeo = new THREE.PlaneGeometry(DIGIT_SIZE, DIGIT_SIZE).rotateX(-Math.PI / 2);
   private gemGeo = new THREE.CylinderGeometry(0.036, 0.04, 0.008, 24);
   private digitMats: THREE.MeshStandardMaterial[];
-  private gemMats = new Map<string, THREE.MeshPhysicalMaterial>();
+  private gemMats = new Map<string, THREE.MeshStandardMaterial>();
 
   constructor() {
-    const ivory = ivoryTexture();
-    ivory.repeat.set(1.3, 1.3);
-    this.tileMat = new THREE.MeshPhysicalMaterial({
-      map: ivory,
-      color: "#ffffff",
-      roughness: 0.3,
-      clearcoat: 0.85,
-      clearcoatRoughness: 0.12,
-      sheen: 0.25,
-      sheenColor: new THREE.Color("#fff3d6"),
-    });
+    // Creme liso e fosco: sem verniz, reflexos ou manchas.
+    this.tileMat = new THREE.MeshStandardMaterial({ color: "#f3ead6", roughness: 0.8, metalness: 0 });
     this.previewMat = this.tileMat.clone();
     this.previewMat.emissive = ACCENT.clone();
     this.previewMat.emissiveIntensity = 0.07;
@@ -130,26 +121,26 @@ export class TileKit {
     return group;
   }
 
-  private gemMaterial(color: string): THREE.MeshPhysicalMaterial {
+  private gemMaterial(color: string): THREE.MeshStandardMaterial {
     let m = this.gemMats.get(color);
     if (!m) {
-      m = new THREE.MeshPhysicalMaterial({ color, metalness: 0.2, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 });
+      m = new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
       this.gemMats.set(color, m);
     }
     return m;
   }
 }
 
-/** Mesma iluminação do tabuleiro (abajur quente + preenchimento frio + ambiente), para a peça ter o mesmo tom. */
-export const LIGHTING = {
-  lampColor: "#ffeccc",
-  lampIntensity: 4.2,
-  fillColor: "#9fc4ff",
-  fillIntensity: 0.18,
-  hemiSky: "#fff6e5",
-  hemiGround: "#0b2219",
-  hemiIntensity: 0.12,
-  envIntensity: 0.22,
-  roomColor: "#0a1712",
-  fogDensity: 0.045,
-} as const;
+/**
+ * Iluminação uniforme e fosca, igual na mesa e nas fotos da mão: luz ambiente forte vinda de cima
+ * e uma luz direcional suave só para dar volume e uma sombra leve. Sem abajur, névoa ou reflexos.
+ */
+export function addFlatLighting(scene: THREE.Scene): THREE.DirectionalLight {
+  scene.add(new THREE.HemisphereLight("#ffffff", "#c9c3b3", 2.0));
+  const key = new THREE.DirectionalLight("#ffffff", 1.1);
+  key.position.set(-2, 10, 3);
+  scene.add(key, key.target);
+  return key;
+}
+
+export const TABLE_COLOR = "#1d5a42";

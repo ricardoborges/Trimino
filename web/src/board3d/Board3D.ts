@@ -2,11 +2,10 @@
 // Coordenadas: a grade 2D (x, y) de shared/geometry vira o plano (x, z) da cena, com aresta = 1.
 
 import * as THREE from "three";
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { cellAt, cellKey, isUp, type BoardCell } from "@trimino/shared";
 import type { Board, Ghost } from "../board.ts";
-import { feltTexture, glowTexture } from "./textures.ts";
-import { ACCENT, GAP, LIGHTING, THICK, TileKit, cellGeometry, roundedTriangle } from "./tileKit.ts";
+import { feltTexture } from "./textures.ts";
+import { ACCENT, GAP, TABLE_COLOR, THICK, TileKit, addFlatLighting, cellGeometry, roundedTriangle } from "./tileKit.ts";
 
 const PITCH_3D = THREE.MathUtils.degToRad(52);
 const PITCH_TOP = THREE.MathUtils.degToRad(89);
@@ -41,20 +40,18 @@ export class Board3D implements Board {
   private goal = { target: new THREE.Vector2(0, 0), dist: 9, pitch: PITCH_3D };
   private velocity = new THREE.Vector2();
 
-  private lamp: THREE.SpotLight;
+  private sun: THREE.DirectionalLight;
   private tiles = new Map<string, TileEntry>();
   private ghostLayer = new THREE.Group();
-  private lastGlow: THREE.Mesh;
+  private lastMark: THREE.Mesh;
   private ghostCells = new Map<string, Ghost>();
   private hoverKey: string | null = null;
   private renderedOnce = false;
 
   private kit = new TileKit();
-  private glowGeo = new THREE.PlaneGeometry(1.9, 1.9).rotateX(-Math.PI / 2);
   private slotGeo = { up: slotGeometries(true), down: slotGeometries(false) };
   private boardCenter = new THREE.Vector2();
   private boardRadius = 1;
-  private glowTex = glowTexture();
 
   private raycaster = new THREE.Raycaster();
   private ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -73,55 +70,28 @@ export class Board3D implements Board {
     this.renderer.toneMappingExposure = 1.0;
     this.renderer.domElement.className = "board board3d";
     host.append(this.renderer.domElement);
-    const vignette = document.createElement("div");
-    vignette.className = "vignette";
-    host.append(vignette);
 
-    // Sala escura; a mesa some na penumbra fora do cone do abajur.
-    const bg = new THREE.Color(LIGHTING.roomColor);
-    this.scene.background = bg;
-    this.scene.fog = new THREE.FogExp2(bg, LIGHTING.fogDensity);
-    const pmrem = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = LIGHTING.envIntensity;
-
-    this.lamp = new THREE.SpotLight(LIGHTING.lampColor, LIGHTING.lampIntensity, 0, 0.5, 0.75, 0);
-    this.lamp.castShadow = true;
-    this.lamp.shadow.mapSize.set(2048, 2048);
-    this.lamp.shadow.bias = -0.0004;
-    this.lamp.shadow.normalBias = 0.015;
-    this.lamp.shadow.camera.near = 4;
-    this.lamp.shadow.camera.far = 40;
-    this.scene.add(this.lamp, this.lamp.target);
-    const fill = new THREE.DirectionalLight(LIGHTING.fillColor, LIGHTING.fillIntensity);
-    fill.position.set(6, 5, 8);
-    this.scene.add(fill, new THREE.HemisphereLight(LIGHTING.hemiSky, LIGHTING.hemiGround, LIGHTING.hemiIntensity));
+    this.scene.background = new THREE.Color(TABLE_COLOR);
+    this.sun = addFlatLighting(this.scene);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.bias = -0.0004;
+    this.sun.shadow.normalBias = 0.015;
+    this.sun.shadow.radius = 3;
 
     const felt = feltTexture();
     felt.repeat.set(40, 40);
     const table = new THREE.Mesh(
       new THREE.PlaneGeometry(160, 160).rotateX(-Math.PI / 2),
-      new THREE.MeshPhysicalMaterial({
-        map: felt,
-        bumpMap: felt,
-        bumpScale: 0.6,
-        color: "#c9d8cf",
-        roughness: 0.95,
-        sheen: 1,
-        sheenColor: new THREE.Color("#3f8a6a"),
-        sheenRoughness: 0.6,
-      }),
+      new THREE.MeshStandardMaterial({ map: felt, bumpMap: felt, bumpScale: 0.25, color: "#b7c9be", roughness: 1 }),
     );
     table.receiveShadow = true;
     this.scene.add(table);
 
-    this.lastGlow = new THREE.Mesh(
-      this.glowGeo,
-      new THREE.MeshBasicMaterial({ map: this.glowTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.55 }),
-    );
-    this.lastGlow.position.y = 0.002;
-    this.lastGlow.visible = false;
-    this.scene.add(this.lastGlow, this.ghostLayer);
+    // Última jogada: contorno fino na cor de quem jogou (sem brilho).
+    this.lastMark = new THREE.Mesh(this.slotGeo.up.ring, new THREE.MeshBasicMaterial({ color: "#ffffff" }));
+    this.lastMark.visible = false;
+    this.scene.add(this.lastMark, this.ghostLayer);
 
     this.bindInput();
     new ResizeObserver(() => this.resize()).observe(host);
@@ -161,12 +131,13 @@ export class Board3D implements Board {
     }
 
     const last = lastTile ? board.find((b) => cellKey(b.r, b.c) === lastTile) : undefined;
-    this.lastGlow.visible = !!last;
+    this.lastMark.visible = !!last;
     if (last) {
       const { center } = cellGeometry(last.r, last.c);
-      this.lastGlow.position.set(center.x, 0.002, center.y);
-      this.lastGlow.rotation.y = isUp(last.r, last.c) ? 0 : Math.PI;
-      (this.lastGlow.material as THREE.MeshBasicMaterial).color.set(colorOf(last.by));
+      this.lastMark.geometry = isUp(last.r, last.c) ? this.slotGeo.up.ring : this.slotGeo.down.ring;
+      this.lastMark.position.set(center.x, THICK + 0.004, center.y);
+      this.lastMark.scale.setScalar(0.9);
+      (this.lastMark.material as THREE.MeshBasicMaterial).color.set(colorOf(last.by));
     }
 
     this.ghostLayer.clear();
@@ -253,12 +224,18 @@ export class Board3D implements Board {
     this.camera.position.set(target.x, Math.sin(pitch) * dist, target.y + Math.cos(pitch) * dist);
     this.camera.lookAt(target.x, 0, target.y);
 
-    // Abajur sobre o jogo: o cone cobre as peças e a mesa escurece em volta.
-    const lampH = 13;
-    const pool = Math.max(this.boardRadius + 2.6, 3.6);
-    this.lamp.position.set(this.boardCenter.x - 2, lampH, this.boardCenter.y + 2.5);
-    this.lamp.target.position.set(this.boardCenter.x, 0, this.boardCenter.y);
-    this.lamp.angle = THREE.MathUtils.clamp(Math.atan(pool / lampH), 0.2, 1.1);
+    // A luz direcional acompanha o jogo para a sombra cobrir todas as peças.
+    const reach = this.boardRadius + 3;
+    this.sun.position.set(this.boardCenter.x - 2, 10, this.boardCenter.y + 3);
+    this.sun.target.position.set(this.boardCenter.x, 0, this.boardCenter.y);
+    const sc = this.sun.shadow.camera;
+    if (sc.right !== reach) {
+      sc.left = sc.bottom = -reach;
+      sc.right = sc.top = reach;
+      sc.near = 1;
+      sc.far = 25;
+      sc.updateProjectionMatrix();
+    }
 
     // queda das peças recém-jogadas
     for (const tile of this.tiles.values()) {

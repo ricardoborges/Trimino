@@ -53,30 +53,6 @@ export function feltTexture(): THREE.CanvasTexture {
   return t;
 }
 
-/** Marfim levemente manchado, para as peças não parecerem plástico liso. */
-export function ivoryTexture(): THREE.CanvasTexture {
-  const size = 256;
-  const [c, g] = canvas(size);
-  const rand = rng(21);
-  g.fillStyle = "#f7eedb";
-  g.fillRect(0, 0, size, size);
-  for (let i = 0; i < 90; i++) {
-    const x = rand() * size;
-    const y = rand() * size;
-    const r = 10 + rand() * 40;
-    const grad = g.createRadialGradient(x, y, 0, x, y, r);
-    const warm = rand() < 0.5;
-    grad.addColorStop(0, warm ? "rgba(230,210,170,0.09)" : "rgba(255,253,245,0.14)");
-    grad.addColorStop(1, "rgba(0,0,0,0)");
-    g.fillStyle = grad;
-    g.fillRect(x - r, y - r, r * 2, r * 2);
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
 /**
  * Número "gravado": sombra no canto superior esquerdo e brilho no inferior direito
  * dão a impressão de baixo-relevo quando a luz vem de cima.
@@ -105,25 +81,5 @@ export function digitTexture(n: number): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 8;
-  return t;
-}
-
-/** Triângulo branco com borda esfumada; tingido por cor vira brilho de encaixe ou de última jogada. */
-export function glowTexture(): THREE.CanvasTexture {
-  const size = 256;
-  const [c, g] = canvas(size);
-  const h = (Math.sqrt(3) / 2) * size * 0.62;
-  const cx = size / 2;
-  const cy = size / 2; // centroide no centro da textura
-  g.filter = "blur(14px)";
-  g.fillStyle = "#fff";
-  g.beginPath();
-  g.moveTo(cx, cy - (2 * h) / 3);
-  g.lineTo(cx + (size * 0.62) / 2, cy + h / 3);
-  g.lineTo(cx - (size * 0.62) / 2, cy + h / 3);
-  g.closePath();
-  g.fill();
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
