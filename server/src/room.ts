@@ -1,6 +1,7 @@
 import { MAX_PLAYERS, MIN_PLAYERS, RuleError, TriminoGame, type ClientMessage, type GameState, type ServerMessage } from "@trimino/shared";
 import { randomBytes } from "node:crypto";
 import type { WebSocket } from "ws";
+import { chooseMove } from "./ai.ts";
 
 export interface Member {
   id: string;
@@ -8,9 +9,14 @@ export interface Member {
   name: string;
   ws: WebSocket | null;
   joinedAt: number;
+  /** Jogador IA controlado pelo servidor (sem conexão). */
+  bot?: boolean;
 }
 
 const LOTTERY_REVEAL_MS = 3500;
+/** Pausa antes de cada ação do robô, para os humanos acompanharem a jogada. */
+const BOT_DELAY_MS = 1100;
+const BOT_NAMES = ["IA Lia", "IA Rui", "IA Téo"];
 
 const newId = () => randomBytes(4).toString("hex");
 
@@ -18,13 +24,15 @@ export class Room {
   members = new Map<string, Member>();
   game: TriminoGame | null = null;
   private emptySince: number | null = null;
+  /** Evita que duas ações de robô rodem ao mesmo tempo. */
+  private botBusy = false;
 
   constructor(readonly code: string) {}
 
   get hostId(): string | null {
     // Anfitrião = membro conectado mais antigo.
     let host: Member | null = null;
-    for (const m of this.members.values()) if (m.ws && (!host || m.joinedAt < host.joinedAt)) host = m;
+    for (const m of this.members.values()) if (m.ws && !m.bot && (!host || m.joinedAt < host.joinedAt)) host = m;
     return host?.id ?? null;
   }
 
@@ -54,7 +62,7 @@ export class Room {
       if (!this.game?.player(member.id)) this.members.delete(member.id);
     }
     this.broadcast({ t: "peerLeft", id: member.id });
-    if (![...this.members.values()].some((m) => m.ws)) this.emptySince = Date.now();
+    if (!this.humansOnline) this.emptySince = Date.now();
     this.broadcastState();
   }
 
@@ -64,9 +72,26 @@ export class Room {
         case "start": {
           if (member.id !== this.hostId) throw new RuleError("Só o anfitrião pode iniciar.");
           if (this.game && this.game.phase !== "gameOver") throw new RuleError("A partida já começou.");
-          const seats = [...this.members.values()].filter((m) => m.ws).slice(0, MAX_PLAYERS);
+          const seats = [...this.members.values()].filter((m) => m.ws || m.bot).slice(0, MAX_PLAYERS);
           if (seats.length < MIN_PLAYERS) throw new RuleError(`São necessários pelo menos ${MIN_PLAYERS} jogadores.`);
           this.game = new TriminoGame(seats.map((m) => ({ id: m.id, name: m.name })));
+          break;
+        }
+        case "addBot": {
+          this.requireHostOutsideMatch(member);
+          const seats = [...this.members.values()].filter((m) => m.ws || m.bot).length;
+          if (seats >= MAX_PLAYERS) throw new RuleError(`A sala já tem ${MAX_PLAYERS} jogadores.`);
+          const used = new Set([...this.members.values()].map((m) => m.name));
+          const name = BOT_NAMES.find((n) => !used.has(n)) ?? `IA ${seats + 1}`;
+          const id = newId();
+          this.members.set(id, { id, clientId: `bot:${id}`, name, ws: null, joinedAt: Date.now(), bot: true });
+          break;
+        }
+        case "removeBot": {
+          this.requireHostOutsideMatch(member);
+          const bot = this.members.get(msg.id);
+          if (!bot?.bot) throw new RuleError("Jogador IA não encontrado.");
+          this.members.delete(bot.id);
           break;
         }
         case "pickLot": {
@@ -126,6 +151,62 @@ export class Room {
     }, LOTTERY_REVEAL_MS);
   }
 
+  private requireHostOutsideMatch(member: Member): void {
+    if (member.id !== this.hostId) throw new RuleError("Só o anfitrião pode mudar os jogadores IA.");
+    if (this.game && this.game.phase !== "gameOver") throw new RuleError("Não dá para mudar os jogadores durante a partida.");
+  }
+
+  private get humansOnline(): boolean {
+    return [...this.members.values()].some((m) => m.ws && !m.bot);
+  }
+
+  /**
+   * Faz os robôs agirem quando é a vez deles (ou no sorteio). Chamado a cada mudança de estado.
+   * Só joga enquanto houver algum humano conectado, para não gastar chamadas de IA à toa.
+   */
+  private driveBots(): void {
+    const game = this.game;
+    if (!game || this.botBusy || !this.humansOnline) return;
+    const isBot = (id: string) => !!this.members.get(id)?.bot;
+
+    if (game.phase === "lottery" && !game.lotteryDone) {
+      const bot = game.active.find((p) => isBot(p.id) && !game.lotteryPicks.some((x) => x.playerId === p.id));
+      if (!bot) return;
+      this.botAct(game, BOT_DELAY_MS / 2, () => {
+        const free = game.lotteryPool.map((_, i) => i).filter((i) => !game.lotteryPicks.some((x) => x.slot === i));
+        game.pickLot(bot.id, free[Math.floor(Math.random() * free.length)]);
+        this.beginAfterLottery(game);
+      });
+      return;
+    }
+
+    if (game.phase !== "playing" || !isBot(game.current.id)) return;
+    const botId = game.current.id;
+    this.botAct(game, BOT_DELAY_MS, async () => {
+      if (game.current.id !== botId) return;
+      if (game.validMoves(botId).length) {
+        const m = await chooseMove(game, botId);
+        // o estado pode ter mudado enquanto a IA pensava (ex.: alguém desistiu)
+        if (this.game === game && game.phase === "playing" && game.current.id === botId) game.place(botId, m.tileId, m.r, m.c, m.rot);
+      } else if (game.canDraw(botId)) game.draw(botId);
+      else game.pass(botId);
+    });
+  }
+
+  private botAct(game: TriminoGame, delay: number, action: () => void | Promise<void>): void {
+    this.botBusy = true;
+    setTimeout(async () => {
+      try {
+        if (this.game === game) await action();
+      } catch (err) {
+        console.error("[ia] ação falhou:", err);
+      } finally {
+        this.botBusy = false;
+        if (this.game === game) this.broadcastState();
+      }
+    }, delay);
+  }
+
   private requireGame(): TriminoGame {
     if (!this.game) throw new RuleError("A partida ainda não começou.");
     return this.game;
@@ -136,7 +217,7 @@ export class Room {
     const hostId = this.hostId;
     const seated = (id: string) => g?.player(id);
     const players = [...this.members.values()]
-      .filter((m) => m.ws || seated(m.id))
+      .filter((m) => m.ws || m.bot || seated(m.id))
       .map((m) => {
         const p = seated(m.id);
         return {
@@ -144,10 +225,11 @@ export class Room {
           name: m.name,
           score: p?.score ?? 0,
           handCount: p?.hand.length ?? 0,
-          connected: m.ws !== null,
+          connected: m.ws !== null || !!m.bot,
           isHost: m.id === hostId,
           spectator: !!g && !p,
           out: p?.out ?? false,
+          bot: !!m.bot,
         };
       });
     // Ordem dos assentos durante a partida; espectadores no fim.
@@ -184,6 +266,7 @@ export class Room {
 
   broadcastState(): void {
     for (const m of this.members.values()) if (m.ws) send(m.ws, { t: "state", state: this.stateFor(m) });
+    this.driveBots();
   }
 
   broadcast(msg: ServerMessage): void {

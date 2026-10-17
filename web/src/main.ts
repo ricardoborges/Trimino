@@ -272,7 +272,7 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
         li.className = `score${p.id === s.turnPlayerId ? " turn" : ""}${p.connected ? "" : " away"}${p.out ? " out" : ""}`;
         li.style.setProperty("--owner", p.spectator ? "#888" : PLAYER_COLORS[i % 4]);
         li.innerHTML = `<span class="dot"></span><span class="nm"></span><b>${p.score}</b>${p.out ? "<small>desistiu</small>" : ""}`;
-        li.querySelector(".nm")!.textContent = p.name + (p.isHost ? " ★" : "");
+        li.querySelector(".nm")!.textContent = (p.bot ? "🤖 " : "") + p.name + (p.isHost ? " ★" : "");
         return li;
       }),
     );
@@ -362,7 +362,7 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
       btn.textContent = isHost ? (seated < 2 ? "Precisa de 2 jogadores" : "Começar partida") : "Aguardando o anfitrião…";
       btn.disabled = !isHost || seated < 2;
       btn.onclick = () => conn.send({ t: "start" });
-      box.append(h, p, code, btn);
+      box.append(h, p, code, botsSection(s, isHost, seated), btn);
       ov.append(box);
       return;
     } else {
@@ -384,6 +384,35 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
     }
     box.append(h, p, btn);
     ov.append(box);
+  }
+
+  /** Jogadores IA na sala; o anfitrião pode adicionar (até 4 lugares) e remover. */
+  function botsSection(s: GameState, isHost: boolean, seated: number): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className = "bots";
+    for (const bot of s.players.filter((x) => x.bot)) {
+      const chip = document.createElement("span");
+      chip.className = "bot-chip";
+      chip.textContent = `🤖 ${bot.name}`;
+      if (isHost) {
+        const x = document.createElement("button");
+        x.title = `Remover ${bot.name}`;
+        x.textContent = "✕";
+        x.onclick = () => conn.send({ t: "removeBot", id: bot.id });
+        chip.append(x);
+      }
+      wrap.append(chip);
+    }
+    if (isHost) {
+      const add = document.createElement("button");
+      add.className = "secondary";
+      add.textContent = "+ Adicionar IA";
+      add.disabled = seated >= 4;
+      add.title = seated >= 4 ? "A sala já tem 4 jogadores" : "Adicionar um jogador controlado por IA";
+      add.onclick = () => conn.send({ t: "addBot" });
+      wrap.append(add);
+    }
+    return wrap;
   }
 
   function renderLottery(box: HTMLElement, h: HTMLElement, p: HTMLElement, s: GameState): void {

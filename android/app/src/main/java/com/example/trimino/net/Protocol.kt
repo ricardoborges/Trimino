@@ -41,6 +41,8 @@ data class PlayerInfo(
   val spectator: Boolean,
   /** Desistiu da partida. */
   val out: Boolean = false,
+  /** Jogador IA controlado pelo servidor. */
+  val bot: Boolean = false,
 )
 
 @Serializable data class RoundSummary(val winnerId: String? = null, val reason: String, val points: Int)
@@ -95,6 +97,10 @@ sealed interface ClientMessage {
   @Serializable @SerialName("pickLot") data class PickLot(val slot: Int) : ClientMessage
 
   @Serializable @SerialName("forfeit") data object Forfeit : ClientMessage
+
+  @Serializable @SerialName("addBot") data object AddBot : ClientMessage
+
+  @Serializable @SerialName("removeBot") data class RemoveBot(val id: String) : ClientMessage
 
   @Serializable @SerialName("nextRound") data object NextRound : ClientMessage
 

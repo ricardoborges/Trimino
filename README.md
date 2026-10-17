@@ -60,6 +60,16 @@ cd android && ./gradlew testDebugUnitTest
   - quem esvazia a mão ganha +25 mais a soma das peças dos adversários;
   - se o jogo travar, quem tem menos pontos na mão ganha a diferença.
 - A partida vai até 400 pontos.
+- **Sair/desistir:** o botão **Sair** tira o jogador da partida. As peças dele voltam ao monte, a vez passa adiante e os outros continuam jogando. Se sobrar um só jogador, ele vence.
+
+## Jogadores IA
+
+Na tela de espera, o anfitrião (quem criou a sala) pode clicar em **+ Adicionar IA** para completar a mesa com robôs, até 4 lugares no total. Cada robô tem um ✕ para remover.
+
+- O servidor calcula as jogadas válidas do robô e a pontuação de cada uma. O modelo da DeepSeek escolhe entre elas, equilibrando pontos agora com livrar-se de peças pesadas. A regra "sem dicas" vale só para os humanos.
+- Configuração: copie `server/.env.example` para `server/.env` e preencha `DEEPSEEK_API_KEY`. O modelo padrão é o `deepseek-flash` (DeepSeek V4.1 Flash) e pode ser trocado com `DEEPSEEK_MODEL`. A chave fica só no servidor e nunca é enviada ao navegador.
+- Sem chave, ou quando a API falha ou demora mais de 10 s, o robô joga a jogada de maior pontuação. A partida nunca trava esperando a IA.
+- Os robôs só jogam enquanto houver algum humano conectado na sala.
 
 ## Áudio e vídeo
 

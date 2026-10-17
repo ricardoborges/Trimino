@@ -153,6 +153,10 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
 
   fun start() = socket?.send(ClientMessage.Start)
 
+  fun addBot() = socket?.send(ClientMessage.AddBot)
+
+  fun removeBot(id: String) = socket?.send(ClientMessage.RemoveBot(id))
+
   fun nextRound() = socket?.send(ClientMessage.NextRound)
 
   fun sendChat(text: String) {

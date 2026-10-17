@@ -166,7 +166,12 @@ private fun TopBar(vm: GameViewModel, s: GameState?) {
           horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
           Box(Modifier.size(9.dp).background(if (p.spectator) Color.Gray else PlayerColors[seat % 4], CircleShape))
-          Text(p.name + if (p.isHost) " ★" else "", color = if (p.connected && !p.out) Color.White else Muted, fontSize = 13.sp, maxLines = 1)
+          Text(
+            (if (p.bot) "🤖 " else "") + p.name + if (p.isHost) " ★" else "",
+            color = if (p.connected && !p.out) Color.White else Muted,
+            fontSize = 13.sp,
+            maxLines = 1,
+          )
           Text(
             "${p.score}",
             color = if (p.out) Muted else Color.White,
@@ -325,6 +330,24 @@ private fun PhaseCard(vm: GameViewModel, s: GameState, modifier: Modifier) {
   ) {
     Text(title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
     Text(body, color = Muted)
+    if (s.phase == "lobby") {
+      // Jogadores IA: o anfitrião adiciona (até 4 lugares) e remove.
+      s.players.filter { it.bot }.forEach { bot ->
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Text("🤖 ${bot.name}", color = Color.White, modifier = Modifier.weight(1f))
+          if (isHost) TextButton({ vm.removeBot(bot.id) }) { Text("Remover") }
+        }
+      }
+      if (isHost)
+        OutlinedButton(
+          { vm.addBot() },
+          enabled = connected < 4,
+          colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+          border = BorderStroke(1.dp, FeltLine),
+        ) {
+          Text("+ Adicionar IA")
+        }
+    }
     Button(
       onClick = { if (s.phase == "roundOver") vm.nextRound() else vm.start() },
       enabled = isHost && (s.phase != "lobby" || connected >= 2),

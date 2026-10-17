@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
+import { aiEnabled } from "./ai.ts";
 import { Room, send, type Member } from "./room.ts";
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -103,4 +104,11 @@ wss.on("connection", (ws: WebSocket) => {
   });
 });
 
-http.listen(PORT, () => console.log(`Triminó ouvindo em http://localhost:${PORT} (WebSocket em /ws)`));
+http.listen(PORT, () => {
+  console.log(`Triminó ouvindo em http://localhost:${PORT} (WebSocket em /ws)`);
+  console.log(
+    aiEnabled()
+      ? `Jogadores IA: DeepSeek (${process.env.DEEPSEEK_MODEL ?? "deepseek-flash"})`
+      : "Jogadores IA: sem DEEPSEEK_API_KEY, usando jogada de maior pontuação",
+  );
+});

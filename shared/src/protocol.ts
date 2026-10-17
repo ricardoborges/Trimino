@@ -55,6 +55,8 @@ export interface PlayerInfo {
   spectator: boolean;
   /** Desistiu da partida. */
   out: boolean;
+  /** Jogador IA controlado pelo servidor. */
+  bot: boolean;
 }
 
 export interface RoundSummary {
@@ -105,6 +107,8 @@ export type ClientMessage =
   | { t: "start" }
   | { t: "pickLot"; slot: number }
   | { t: "forfeit" }
+  | { t: "addBot" }
+  | { t: "removeBot"; id: string }
   | { t: "nextRound" }
   | { t: "place"; tileId: number; r: number; c: number; rot: number }
   | { t: "draw" }

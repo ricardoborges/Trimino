@@ -238,6 +238,25 @@ export class TriminoGame {
     const move = this.fits(tile, r, c, ((rot % 3) + 3) % 3);
     if (!move) throw new RuleError("A peça não encaixa aí.");
 
+    const { points, bonuses } = this.evaluate(move);
+    const verts = cellVertices(r, c);
+    p.hand.splice(idx, 1);
+    this.board.set(cellKey(r, c), { r, c, vals: move.vals, tileId, by: p.id });
+    verts.forEach((v, i) => this.vertices.set(vertexKey(...v), move.vals[i]));
+
+    p.score += points;
+    this.consecutivePasses = 0;
+    this.addLog({ actor: p.name, action: "jogou", tile: tile.v, points, note: bonuses.length ? bonuses.join(", ") : undefined });
+
+    if (p.hand.length === 0) this.endRound(p, "emptyHand");
+    else this.nextTurn();
+    return { points, bonuses };
+  }
+
+  /** Pontos que uma jogada válida renderia (peça + bônus), sem alterar o jogo. */
+  evaluate(move: Move): PlaceResult {
+    const { r, c, tileId } = move;
+    const tile = fullSet()[tileId];
     const verts = cellVertices(r, c);
     const bonuses: string[] = [];
     let points = tileSum(tile);
@@ -259,22 +278,13 @@ export class TriminoGame {
       }
     }
 
-    p.hand.splice(idx, 1);
-    this.board.set(cellKey(r, c), { r, c, vals: move.vals, tileId, by: p.id });
-    verts.forEach((v, i) => this.vertices.set(vertexKey(...v), move.vals[i]));
-
+    // Hexágono: esta peça fecha as seis células ao redor de um de seus cantos.
+    const here = cellKey(r, c);
     for (const [x, y] of verts)
-      if (cellsAroundVertex(x, y).every(([cr, cc]) => this.board.has(cellKey(cr, cc)))) {
+      if (cellsAroundVertex(x, y).every(([cr, cc]) => cellKey(cr, cc) === here || this.board.has(cellKey(cr, cc)))) {
         points += SCORE.hexagon;
         bonuses.push(`hexágono +${SCORE.hexagon}`);
       }
-
-    p.score += points;
-    this.consecutivePasses = 0;
-    this.addLog({ actor: p.name, action: "jogou", tile: tile.v, points, note: bonuses.length ? bonuses.join(", ") : undefined });
-
-    if (p.hand.length === 0) this.endRound(p, "emptyHand");
-    else this.nextTurn();
     return { points, bonuses };
   }
 

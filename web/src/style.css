@@ -132,6 +132,18 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .board3d { cursor: grab; }
 
 
+/* jogadores IA */
+.bots { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bot-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 6px 6px 12px; border-radius: 999px;
+  background: var(--panel-2); border: 1px solid var(--felt-line); font-size: 14px;
+}
+.bot-chip button {
+  border: 0; background: transparent; color: var(--muted); width: 24px; height: 24px; border-radius: 50%; line-height: 1;
+}
+.bot-chip button:hover { background: rgba(226, 91, 76, 0.2); color: #ffb3aa; }
+.bots .secondary { min-height: 36px; padding: 6px 14px; }
+
 /* sorteio */
 .card.wide { width: min(560px, 100%); }
 .lots { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
