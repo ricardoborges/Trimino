@@ -2,8 +2,8 @@
 
 import * as THREE from "three";
 
-/** Cor dos pontinhos de cada valor (0 não tem pontos). */
-export const VALUE_COLORS = ["#3a3a3a", "#d0342c", "#1f8a3a", "#1f5fae", "#7d3c98", "#e0a800"];
+/** Cor dos pontinhos de cada valor (0 não tem pontos): 1 laranja, 2 verde, 3 azul, 4 amarelo, 5 vermelho. */
+export const VALUE_COLORS = ["#3a3a3a", "#ec7a2c", "#1f9a4a", "#1f6fc0", "#e3bd17", "#d6322c"];
 
 function canvas(size: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const c = document.createElement("canvas");
@@ -56,19 +56,19 @@ export function feltTexture(): THREE.CanvasTexture {
 /** Tamanho (em unidades da mesa) do quadrado onde os pontinhos de um canto são desenhados. */
 export const PIP_AREA = 0.4;
 const PIP_SPACING = 0.084;
-const PIP_RADIUS = 0.034;
+const PIP_RADIUS = 0.03;
 
 /**
- * Posição dos pontinhos de cada valor, em múltiplos de PIP_SPACING. y negativo aponta para o canto:
- * o arranjo começa estreito na ponta e alarga em direção ao centro, acompanhando a cunha do canto.
+ * Posição dos pontinhos de cada valor, em múltiplos de PIP_SPACING (x atravessa, y vai do canto ao centro),
+ * no padrão das peças clássicas: 2 e 3 em linha apontando para o canto, 4 em quadrado, 5 como no dado.
  */
 const PIP_LAYOUT: [number, number][][] = [
   [],
   [[0, 0]],
-  [[-0.55, 0.1], [0.55, 0.1]],
-  [[0, -0.55], [-0.6, 0.45], [0.6, 0.45]],
-  [[0, -0.85], [-0.6, 0], [0.6, 0], [0, 0.85]],
-  [[0, -0.95], [-0.55, -0.1], [0.55, -0.1], [-1.05, 0.75], [1.05, 0.75]],
+  [[0, -0.55], [0, 0.55]],
+  [[0, -1], [0, 0], [0, 1]],
+  [[-0.55, -0.55], [0.55, -0.55], [-0.55, 0.55], [0.55, 0.55]],
+  [[-0.65, -0.65], [0.65, -0.65], [0, 0], [-0.65, 0.65], [0.65, 0.65]],
 ];
 
 /** Pontinhos de um valor, levemente rebaixados na peça. O topo da textura aponta para o canto. */

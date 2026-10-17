@@ -2,7 +2,7 @@
 // Coordenadas: a grade 2D (x, y) de shared/geometry vira o plano (x, z) da cena, com aresta = 1.
 
 import * as THREE from "three";
-import { cellAt, cellKey, isUp, type BoardCell } from "@trimino/shared";
+import { cellAt, cellKey, edgeNeighbors, isUp, type BoardCell } from "@trimino/shared";
 import type { Board, Ghost } from "../board.ts";
 import { feltTexture } from "./textures.ts";
 import { ACCENT, GAP, TABLE_COLOR, THICK, TileKit, addFlatLighting, cellGeometry, roundedTriangle } from "./tileKit.ts";
@@ -36,8 +36,12 @@ export class Board3D implements Board {
   private host: HTMLElement;
 
   // câmera: valores atuais seguem os desejados com amortecimento
-  private cam = { target: new THREE.Vector2(0, 0), dist: 9, pitch: PITCH_3D };
-  private goal = { target: new THREE.Vector2(0, 0), dist: 9, pitch: PITCH_3D };
+  // Padrão: vista de cima; o botão alterna para a câmera inclinada.
+  private cam = { target: new THREE.Vector2(0, 0), dist: 9, pitch: PITCH_TOP };
+  private goal = { target: new THREE.Vector2(0, 0), dist: 9, pitch: PITCH_TOP };
+  /** Último enquadramento automático; refeito quando a área muda de tamanho, se o jogador não mexeu na câmera. */
+  private lastFit: { r: number; c: number }[] | null = null;
+  private userMoved = false;
   private velocity = new THREE.Vector2();
 
   private sun: THREE.DirectionalLight;
@@ -118,8 +122,11 @@ export class Board3D implements Board {
       this.tiles.set(k, { group, key: k, dropStart: this.renderedOnce && board.length > 1 ? now : null });
     }
     this.renderedOnce = true;
-    // Peça nova fora da vista (e ninguém arrastando a mesa): reenquadra suavemente.
-    if (board.length && !this.pointers.size && !this.allVisible(board)) this.fit(board);
+    // Peça nova ou espaço vizinho fora da vista (e ninguém arrastando a mesa): reenquadra suavemente.
+    // Usa os vizinhos de todas as peças, e não só os encaixes visíveis, para a câmera não pular
+    // quando o jogador seleciona uma peça.
+    const frame = [...board, ...board.flatMap((b) => edgeNeighbors(b.r, b.c).map(([r, c]) => ({ r, c })))];
+    if (board.length && !this.pointers.size && !this.allVisible(frame)) this.fit(board);
     if (board.length) {
       const pts = board.flatMap((b) => cellGeometry(b.r, b.c).pts);
       const box = new THREE.Box2().setFromPoints(pts);
@@ -162,9 +169,12 @@ export class Board3D implements Board {
     }
   }
 
+  /** Enquadra as peças e os espaços vizinhos a elas (onde a próxima peça pode ir). */
   fit(board: { r: number; c: number }[]): void {
-    const pts = (board.length ? board : [{ r: 0, c: 0 }]).flatMap((b) => cellGeometry(b.r, b.c).pts);
-    const box = new THREE.Box2().setFromPoints(pts).expandByScalar(1.2);
+    const cells = board.length ? board : [{ r: 0, c: 0 }];
+    const withNeighbors = [...cells, ...cells.flatMap((b) => edgeNeighbors(b.r, b.c).map(([r, c]) => ({ r, c })))];
+    const pts = withNeighbors.flatMap((b) => cellGeometry(b.r, b.c).pts);
+    const box = new THREE.Box2().setFromPoints(pts).expandByScalar(0.45);
     const size = box.getSize(new THREE.Vector2());
     box.getCenter(this.goal.target);
     const tan = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
@@ -172,6 +182,8 @@ export class Board3D implements Board {
     const byDepth = (size.y / 2 / tan) * (1.15 + Math.cos(this.goal.pitch));
     this.goal.dist = THREE.MathUtils.clamp(Math.max(byWidth, byDepth, 5), 4, 60);
     this.velocity.set(0, 0);
+    this.lastFit = board;
+    this.userMoved = false;
   }
 
   /** Posição na tela (px, relativa à janela) do centro de uma célula. Usado nos testes de ponta a ponta. */
@@ -201,6 +213,8 @@ export class Board3D implements Board {
   toggleView(): boolean {
     const top = this.goal.pitch < PITCH_TOP - 0.01;
     this.goal.pitch = top ? PITCH_TOP : PITCH_3D;
+    // a distância ideal muda com o ângulo; reenquadra se o jogador não tinha mexido na câmera
+    if (this.lastFit && !this.userMoved) this.fit(this.lastFit);
     return top;
   }
 
@@ -274,6 +288,7 @@ export class Board3D implements Board {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    if (this.lastFit && !this.userMoved) this.fit(this.lastFit);
   }
 
   // ---------------- entrada ----------------
@@ -300,6 +315,7 @@ export class Board3D implements Board {
     const b = this.groundAt(to.x, to.y);
     if (!a || !b) return;
     const d = a.sub(b);
+    this.userMoved = true;
     this.cam.target.add(d);
     this.goal.target.add(d);
     const now = performance.now();
@@ -310,6 +326,7 @@ export class Board3D implements Board {
 
   private zoomAt(x: number, y: number, factor: number): void {
     const before = this.goal.dist;
+    this.userMoved = true;
     this.goal.dist = THREE.MathUtils.clamp(before * factor, 3, 60);
     const p = this.groundAt(x, y);
     if (p) this.goal.target.lerp(p, 1 - this.goal.dist / before);
