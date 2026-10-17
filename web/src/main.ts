@@ -312,7 +312,7 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
         li.className = `score${p.id === s.turnPlayerId ? " turn" : ""}${p.connected ? "" : " away"}${p.out ? " out" : ""}`;
         li.style.setProperty("--owner", p.spectator ? "#888" : PLAYER_COLORS[i % 4]);
         li.innerHTML = `<span class="dot"></span><span class="nm"></span><b>${p.score}</b>${p.out ? "<small>desistiu</small>" : ""}`;
-        li.querySelector(".nm")!.textContent = (p.bot ? "🤖 " : "") + p.name + (p.isHost ? " ★" : "");
+        li.querySelector(".nm")!.textContent = p.name + (p.isHost ? " ★" : "");
         return li;
       }),
     );
@@ -440,7 +440,7 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
     for (const bot of s.players.filter((x) => x.bot)) {
       const chip = document.createElement("span");
       chip.className = "bot-chip";
-      chip.textContent = `🤖 ${bot.name}`;
+      chip.textContent = bot.name;
       if (isHost) {
         const x = document.createElement("button");
         x.title = `Remover ${bot.name}`;

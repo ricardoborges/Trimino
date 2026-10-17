@@ -167,7 +167,7 @@ private fun TopBar(vm: GameViewModel, s: GameState?) {
         ) {
           Box(Modifier.size(9.dp).background(if (p.spectator) Color.Gray else PlayerColors[seat % 4], CircleShape))
           Text(
-            (if (p.bot) "🤖 " else "") + p.name + if (p.isHost) " ★" else "",
+            p.name + if (p.isHost) " ★" else "",
             color = if (p.connected && !p.out) Color.White else Muted,
             fontSize = 13.sp,
             maxLines = 1,
@@ -334,7 +334,7 @@ private fun PhaseCard(vm: GameViewModel, s: GameState, modifier: Modifier) {
       // Jogadores IA: o anfitrião adiciona (até 4 lugares) e remove.
       s.players.filter { it.bot }.forEach { bot ->
         Row(verticalAlignment = Alignment.CenterVertically) {
-          Text("🤖 ${bot.name}", color = Color.White, modifier = Modifier.weight(1f))
+          Text(bot.name, color = Color.White, modifier = Modifier.weight(1f))
           if (isHost) TextButton({ vm.removeBot(bot.id) }) { Text("Remover") }
         }
       }

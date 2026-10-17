@@ -64,7 +64,7 @@ cd android && ./gradlew testDebugUnitTest
 
 ## Jogadores IA
 
-Na tela de espera, o anfitrião (quem criou a sala) pode clicar em **+ Adicionar IA** para completar a mesa com robôs, até 4 lugares no total. Cada robô tem um ✕ para remover.
+Na tela de espera, o anfitrião (quem criou a sala) pode clicar em **+ Adicionar IA** para completar a mesa com robôs, até 4 lugares no total. Cada robô tem um ✕ para remover. Eles entram nesta ordem: **Ricardo (IA)**, **Ilana (IA)** e **Henrique (IA)**. Todo jogador IA tem "(IA)" no nome, e humanos não podem usar essa marca.
 
 - O servidor calcula as jogadas válidas do robô e a pontuação de cada uma. O modelo da DeepSeek escolhe entre elas, equilibrando pontos agora com livrar-se de peças pesadas. A regra "sem dicas" vale só para os humanos.
 - Configuração: copie `server/.env.example` para `server/.env` e preencha `DEEPSEEK_API_KEY`. O modelo padrão é o `deepseek-flash` (DeepSeek V4.1 Flash) e pode ser trocado com `DEEPSEEK_MODEL`. A chave fica só no servidor e nunca é enviada ao navegador.

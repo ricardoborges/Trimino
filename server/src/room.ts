@@ -16,8 +16,8 @@ export interface Member {
 const LOTTERY_REVEAL_MS = 3500;
 /** Pausa antes de cada ação do robô, para os humanos acompanharem a jogada. */
 const BOT_DELAY_MS = 1100;
-/** Nomes dos jogadores IA, na ordem em que são adicionados (pula um nome já usado na sala). */
-const BOT_NAMES = ["Ricardo", "Ilana", "Henrique"];
+/** Nomes dos jogadores IA, na ordem em que são adicionados. Todo jogador IA leva "(IA)" no nome. */
+const BOT_NAMES = ["Ricardo (IA)", "Ilana (IA)", "Henrique (IA)"];
 
 const newId = () => randomBytes(4).toString("hex");
 
@@ -83,10 +83,7 @@ export class Room {
           const seats = [...this.members.values()].filter((m) => m.ws || m.bot).length;
           if (seats >= MAX_PLAYERS) throw new RuleError(`A sala já tem ${MAX_PLAYERS} jogadores.`);
           const used = new Set([...this.members.values()].map((m) => m.name));
-          const name =
-            BOT_NAMES.find((n) => !used.has(n)) ??
-            BOT_NAMES.map((n) => `${n} (IA)`).find((n) => !used.has(n)) ??
-            `IA ${seats + 1}`;
+          const name = BOT_NAMES.find((n) => !used.has(n)) ?? `Jogador ${seats + 1} (IA)`;
           const id = newId();
           this.members.set(id, { id, clientId: `bot:${id}`, name, ws: null, joinedAt: Date.now(), bot: true });
           break;

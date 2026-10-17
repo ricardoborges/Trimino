@@ -17,6 +17,15 @@ function iceServers(): IceServer[] {
   return servers;
 }
 
+/** Nome de jogador humano: "(IA)" é reservado para os robôs, para a marca ser confiável. */
+function humanName(raw: unknown): string {
+  return String(raw ?? "")
+    .replace(/\(\s*ia\s*\)/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 24);
+}
+
 const rooms = new Map<string, Room>();
 setInterval(() => {
   for (const [code, room] of rooms) if (room.isAbandoned) rooms.delete(code);
@@ -82,7 +91,7 @@ wss.on("connection", (ws: WebSocket) => {
       if (clientId.length < 8) return send(ws, { t: "error", message: "clientId inválido." });
       room = rooms.get(code) ?? new Room(code);
       rooms.set(code, room);
-      member = room.join(ws, String(msg.name ?? "").trim().slice(0, 24), clientId);
+      member = room.join(ws, humanName(msg.name), clientId);
       const peers = [...room.members.values()].filter((m) => m.ws && m !== member).map((m) => m.id);
       send(ws, { t: "welcome", you: member.id, room: code, iceServers: iceServers(), peers });
       room.broadcastState();
