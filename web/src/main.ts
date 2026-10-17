@@ -105,6 +105,7 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
   });
 
   conn.onKicked = () => toast("Você entrou nesta sala em outra janela. Esta foi desconectada.");
+  conn.onRefused = (reason) => location.replace(`/varanda?aviso=${encodeURIComponent(reason)}`);
 
   function onMessage(msg: ServerMessage): void {
     switch (msg.t) {
@@ -133,9 +134,6 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
       case "state":
         state = msg.state;
         render();
-        break;
-      case "chat":
-        addChat(msg.name, msg.text);
         break;
       case "error":
         toast(msg.message);
@@ -187,7 +185,7 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
       v.autoplay = true;
       v.playsInline = true;
       v.muted = self;
-      box.append(v, document.createElement("figcaption"));
+      box.append(v, Object.assign(document.createElement("span"), { className: "role" }), document.createElement("figcaption"));
       if (self) $("videos").prepend(box);
       else $("videos").append(box);
       videos.set(id, box);
@@ -203,8 +201,25 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
       const p = state?.players.find((p) => p.id === id);
       box.querySelector("figcaption")!.textContent = (p?.name ?? "…") + (id === myId ? " (você)" : "");
       box.classList.toggle("turn", state?.turnPlayerId === id);
-      const seat = state?.players.findIndex((p) => p.id === id) ?? -1;
-      box.style.setProperty("--owner", seat >= 0 ? PLAYER_COLORS[seat % 4] : "transparent");
+      // Papel na mesa: jogador (com a cor do assento, igual ao placar) ou espectador.
+      const spectator = !!p?.spectator;
+      box.classList.toggle("spectator", spectator);
+      const role = box.querySelector<HTMLElement>(".role")!;
+      role.textContent = p ? (spectator ? "👁 Espectador" : "🎲 Jogador") : "";
+      role.hidden = !p;
+      // anfitrião: ✕ para tirar o espectador da conversa
+      const host = !!state?.players.find((x) => x.id === myId)?.isHost;
+      let kick = box.querySelector<HTMLButtonElement>(".kick");
+      if (host && spectator && id !== myId) {
+        if (!kick) {
+          kick = Object.assign(document.createElement("button"), { className: "kick", textContent: "✕", title: "Tirar da conversa" });
+          kick.dataset.action = "end";
+          kick.dataset.id = id;
+          box.append(kick);
+        }
+      } else kick?.remove();
+      const seat = state?.players.filter((x) => !x.spectator).findIndex((x) => x.id === id) ?? -1;
+      box.style.setProperty("--owner", !spectator && seat >= 0 ? PLAYER_COLORS[seat % 4] : "transparent");
     }
   }
 
@@ -212,8 +227,14 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
   const cam = $("cam");
   const syncMediaButtons = () => {
     mic.hidden = cam.hidden = !inCall;
-    mic.classList.toggle("off", !mesh.isEnabled("audio"));
-    cam.classList.toggle("off", !mesh.isEnabled("video"));
+    const setTool = (btn: HTMLElement, on: boolean, icon: string, what: string) => {
+      btn.classList.toggle("off", !on);
+      btn.setAttribute("aria-pressed", String(on));
+      btn.querySelector(".ms")!.textContent = on ? icon : `${icon}_off`;
+      btn.title = `${on ? "Desligar" : "Ligar"} ${what}`;
+    };
+    setTool(mic, mesh.isEnabled("audio"), "mic", "microfone");
+    setTool(cam, mesh.isEnabled("video"), "videocam", "câmera");
     mic.toggleAttribute("disabled", !mesh.hasTrack("audio"));
     cam.toggleAttribute("disabled", !mesh.hasTrack("video"));
   };
@@ -227,15 +248,17 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
     conn.send(me?.inCall || me?.callRequested ? { t: "leaveCall" } : { t: "requestCall" });
   };
 
-  // Espectadores: o anfitrião libera ou tira da conversa.
-  $("watchers").addEventListener("click", (e) => {
+  // Espectadores: o anfitrião libera (pedidos abaixo das câmeras) ou tira da conversa (✕ no vídeo).
+  const callAction = (e: MouseEvent) => {
     const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-action]");
     if (!btn) return;
     const id = btn.dataset.id!;
     if (btn.dataset.action === "allow") conn.send({ t: "answerCall", id, allow: true });
     if (btn.dataset.action === "deny") conn.send({ t: "answerCall", id, allow: false });
     if (btn.dataset.action === "end") conn.send({ t: "endCall", id });
-  });
+  };
+  $("call-requests").addEventListener("click", callAction);
+  $("videos").addEventListener("click", callAction);
 
   // ---------- ações ----------
 
@@ -304,7 +327,6 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
     { panel: "log-panel", toggle: "log-toggle", close: "log-close", body: "log" },
     { panel: "sheet-panel", toggle: "sheet-toggle", close: "sheet-close", body: "sheet" },
     { panel: "tokens-panel", toggle: "tokens-toggle", close: "tokens-close", body: "tokens" },
-    { panel: "watchers-panel", toggle: "watchers-toggle", close: "watchers-close", body: "watchers" },
   ];
   const openPanel = (open: string | null) => {
     for (const p of panels) {
@@ -350,12 +372,6 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
     if (e.key === "r" || e.key === "R") rotate();
     if (e.key === "Enter") play();
     if (e.key === "Escape") { preview = null; selectedTile = null; render(); }
-  });
-  $<HTMLFormElement>("chat-form").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const input = (e.target as HTMLFormElement).elements.namedItem("text") as HTMLInputElement;
-    if (input.value.trim()) conn.send({ t: "chat", text: input.value });
-    input.value = "";
   });
 
   // ---------- render ----------
@@ -411,7 +427,7 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
         li.className = `score${p.id === s.turnPlayerId ? " turn" : ""}${p.connected ? "" : " away"}${p.out ? " out" : ""}`;
         li.style.setProperty("--owner", p.spectator ? "#888" : PLAYER_COLORS[i % 4]);
         li.innerHTML = `<span class="dot"></span><span class="nm"></span><b>${p.score}</b>${p.out ? "<small>desistiu</small>" : ""}`;
-        li.querySelector(".nm")!.textContent = p.name + (p.isHost ? " ★" : "");
+        li.querySelector(".nm")!.textContent = p.name;
         return li;
       }),
     );
@@ -556,7 +572,7 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
       btn.textContent = isHost ? (seated < 2 ? "Precisa de 2 jogadores" : "Começar partida") : "Aguardando o anfitrião…";
       btn.disabled = !isHost || seated < 2;
       btn.onclick = () => conn.send({ t: "start" });
-      box.append(h, p, code, botsSection(s, isHost, seated), btn);
+      box.append(h, p, code, botsSection(s, !!s.you.canManageBots, seated), btn);
       ov.append(box);
       return;
     } else {
@@ -620,15 +636,15 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
     if (ov.firstChild !== view.el) ov.replaceChildren(view.el);
   }
 
-  /** Jogadores IA na sala; o anfitrião pode adicionar (até 4 lugares) e remover. */
-  function botsSection(s: GameState, isHost: boolean, seated: number): HTMLElement {
+  /** Jogadores IA na sala; só o administrador do site adiciona (até 4 lugares) e remove. */
+  function botsSection(s: GameState, canManage: boolean, seated: number): HTMLElement {
     const wrap = document.createElement("div");
     wrap.className = "bots";
     for (const bot of s.players.filter((x) => x.bot)) {
       const chip = document.createElement("span");
       chip.className = "bot-chip";
       chip.textContent = bot.name;
-      if (isHost) {
+      if (canManage) {
         const x = document.createElement("button");
         x.title = `Remover ${bot.name}`;
         x.textContent = "✕";
@@ -637,7 +653,7 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
       }
       wrap.append(chip);
     }
-    if (isHost) {
+    if (canManage) {
       const add = document.createElement("button");
       add.className = "secondary";
       add.textContent = "+ Adicionar IA";
@@ -691,51 +707,30 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
 }
 
 /**
- * Espectadores: todos veem a lista; o anfitrião libera ou recusa quem pediu para entrar na conversa
- * e pode tirar quem já está. O próprio espectador tem o botão de pedir (ao lado da câmera).
+ * Pedidos de espectadores para entrar na conversa: só o anfitrião vê, abaixo das câmeras, para permitir ou recusar.
+ * Quem já está na conversa aparece nas câmeras com a etiqueta "Espectador". O próprio espectador tem o botão de pedir.
  */
-let seenRequests = new Set<string>();
 function renderWatchers(s: GameState, isHost: boolean): void {
-  const watchers = s.players.filter((p) => p.spectator && p.connected);
-  const requests = watchers.filter((p) => p.callRequested);
-  $("watchers-count").textContent = String(watchers.length);
-  $("watchers-toggle").classList.toggle("alert", isHost && requests.length > 0);
-  // anfitrião: abre o painel quando chega um pedido novo
-  if (isHost && requests.some((p) => !seenRequests.has(p.id)) && $("watchers-panel").hidden) $("watchers-toggle").click();
-  seenRequests = new Set(requests.map((p) => p.id));
-
-  const list = $("watchers");
-  if (!watchers.length) {
-    list.replaceChildren(Object.assign(document.createElement("li"), { className: "watchers-empty", textContent: "Ninguém assistindo agora." }));
-  } else {
-    list.replaceChildren(
-      ...watchers.map((p) => {
-        const li = document.createElement("li");
-        const name = Object.assign(document.createElement("span"), { className: "watcher-name", textContent: p.name + (p.id === s.you.id ? " (você)" : "") });
-        if (p.guest) name.append(Object.assign(document.createElement("small"), { textContent: " convidado" }));
-        const status = Object.assign(document.createElement("small"), {
-          className: "watcher-status",
-          textContent: p.inCall ? "🎥 na conversa" : p.callRequested ? "✋ pediu para entrar na conversa" : "assistindo",
-        });
-        li.append(name, status);
-        const action = (label: string, act: string, cls = "secondary") => {
-          const b = Object.assign(document.createElement("button"), { className: `${cls} small`, textContent: label });
-          b.dataset.action = act;
-          b.dataset.id = p.id;
-          return b;
-        };
-        if (isHost && p.callRequested) {
-          const row = document.createElement("div");
-          row.className = "row";
-          row.append(action("Permitir", "allow", "primary"), action("Recusar", "deny"));
-          li.append(row);
-        } else if (isHost && p.inCall) {
-          li.append(action("Tirar da conversa", "end"));
-        }
-        return li;
-      }),
-    );
-  }
+  const requests = isHost ? s.players.filter((p) => p.spectator && p.connected && p.callRequested) : [];
+  const list = $("call-requests");
+  list.hidden = !requests.length;
+  list.replaceChildren(
+    ...requests.map((p) => {
+      const li = document.createElement("li");
+      const text = Object.assign(document.createElement("span"), { textContent: `✋ ${p.name}${p.guest ? " (convidado)" : ""} quer entrar na conversa` });
+      const action = (label: string, act: string, cls: string) => {
+        const b = Object.assign(document.createElement("button"), { className: `${cls} small`, textContent: label });
+        b.dataset.action = act;
+        b.dataset.id = p.id;
+        return b;
+      };
+      const row = document.createElement("div");
+      row.className = "row";
+      row.append(action("Permitir", "allow", "primary"), action("Recusar", "deny", "secondary"));
+      li.append(text, row);
+      return li;
+    }),
+  );
 
   // botão do próprio espectador
   const me = s.players.find((p) => p.id === s.you.id);
@@ -899,17 +894,6 @@ function renderSheet(s: GameState): void {
   }
   sheet.replaceChildren(...cells);
   if (atBottom) sheet.scrollTop = sheet.scrollHeight;
-}
-
-/** Mensagem de chat na lateral. */
-function addChat(name: string, text: string): void {
-  const li = document.createElement("li");
-  const who = document.createElement("b");
-  who.textContent = `${name}: `;
-  li.append(who, text);
-  const list = $("chat-log");
-  list.append(li);
-  list.scrollTop = list.scrollHeight;
 }
 
 /**

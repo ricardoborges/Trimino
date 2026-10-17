@@ -18,6 +18,8 @@ export interface Member {
   bot?: boolean;
   /** Conta do jogador; ausente para convidados e robôs. */
   userId?: string;
+  /** Administrador do site: só ele adiciona e remove jogadores IA. */
+  admin?: boolean;
   /** Espectador: só assiste, não ocupa lugar na mesa. */
   watch?: boolean;
   /** Espectador pediu para entrar na videoconferência. */
@@ -84,6 +86,11 @@ export class Room {
     return [...this.members.values()].filter((m) => (m.ws || m.bot) && !m.watch).length;
   }
 
+  /** Esta identidade já tem lugar na mesa (reconexão). */
+  hasClient(clientId: string): boolean {
+    return [...this.members.values()].some((m) => m.clientId === clientId);
+  }
+
   get humansConnected(): number {
     return [...this.members.values()].filter((m) => m.ws && !m.bot).length;
   }
@@ -100,16 +107,17 @@ export class Room {
     return [...this.members.values()].filter((m) => m !== except && m.inCall && m.ws).map((m) => m.id);
   }
 
-  join(ws: Socket, name: string, clientId: string, opts: { watch?: boolean; userId?: string } = {}): Member {
+  join(ws: Socket, name: string, clientId: string, opts: { watch?: boolean; userId?: string; admin?: boolean } = {}): Member {
     let member = [...this.members.values()].find((m) => m.clientId === clientId);
     if (member) {
       member.ws?.close(4000, "Conectado em outro lugar");
       member.ws = ws;
       member.name = name || member.name;
+      member.admin = !!opts.admin;
     } else {
       // Sem lugar livre, quem chega fica assistindo.
       const watch = !!opts.watch || (this.betweenMatches && this.seatsTaken >= MAX_PLAYERS);
-      member = { id: newId(), clientId, name: name || "Jogador", ws, joinedAt: Date.now(), userId: opts.userId, watch };
+      member = { id: newId(), clientId, name: name || "Jogador", ws, joinedAt: Date.now(), userId: opts.userId, admin: !!opts.admin, watch };
       this.members.set(member.id, member);
     }
     member.inCall = this.inCallOf(member);
@@ -191,11 +199,6 @@ export class Room {
         case "pass":
           this.requireGame().pass(member.id);
           break;
-        case "chat": {
-          const text = String(msg.text ?? "").slice(0, 300).trim();
-          if (text) this.broadcast({ t: "chat", from: member.id, name: member.name, text });
-          return;
-        }
         case "signal": {
           // Só entre quem está na videoconferência.
           const target = this.members.get(msg.to);
@@ -268,7 +271,7 @@ export class Room {
   }
 
   private requireHostOutsideMatch(member: Member): void {
-    if (member.id !== this.hostId) throw new RuleError("Só o anfitrião pode mudar os jogadores IA.");
+    if (!member.admin) throw new RuleError("Só o administrador pode mudar os jogadores IA.");
     if (this.game && this.game.phase !== "gameOver") throw new RuleError("Não dá para mudar os jogadores durante a partida.");
   }
 
@@ -412,6 +415,7 @@ export class Room {
         frontier: g && g.phase === "playing" ? g.frontier().map(([r, c]) => ({ r, c })) : [],
         canDraw: g ? g.canDraw(viewer.id) : false,
         canPass: g ? g.canPass(viewer.id) : false,
+        canManageBots: !!viewer.admin,
       },
     };
   }

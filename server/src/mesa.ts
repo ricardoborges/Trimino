@@ -17,9 +17,13 @@ interface Meta {
 export interface Visitor {
   userId?: string;
   name?: string;
+  /** Administrador do site (pode mexer nos jogadores IA). */
+  admin?: boolean;
 }
 
 const HEARTBEAT_MS = 60_000;
+/** Código de fechamento do WebSocket quando um convidado tenta abrir uma mesa vazia. */
+const GUEST_REFUSED = 4003;
 
 export class Mesa extends DurableObject<Env> {
   private room: Room | null = null;
@@ -74,9 +78,14 @@ export class Mesa extends DurableObject<Env> {
         if (member) return;
         const clientId = String(msg.clientId ?? "").slice(0, 64);
         if (clientId.length < 8) return send(ws, { t: "error", message: "clientId inválido." });
+        // Convidado não arma mesa: só entra (ou volta) numa que já tem gente sentada.
+        if (!visitor.userId && room.humansConnected === 0 && !room.hasClient(clientId)) {
+          ws.close(GUEST_REFUSED, "Esta mesa não está aberta. Convidados só entram em mesas com alguém jogando.");
+          return;
+        }
         // Com conta, o nome é o da conta; convidado escolhe o seu.
         const name = visitor.userId ? humanName(visitor.name) : humanName(msg.name);
-        member = room.join(ws, name, clientId, { watch: !!msg.watch, userId: visitor.userId });
+        member = room.join(ws, name, clientId, { watch: !!msg.watch, userId: visitor.userId, admin: !!visitor.admin });
         send(ws, {
           t: "welcome",
           you: member.id,

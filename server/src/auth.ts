@@ -31,7 +31,17 @@ const hex = (buf: ArrayBuffer) => [...new Uint8Array(buf)].map((b) => b.toString
 const randomToken = (bytes = 32) => b64(crypto.getRandomValues(new Uint8Array(bytes))).replace(/[+/=]/g, (c) => ({ "+": "-", "/": "_", "=": "" })[c]!);
 export const newId = () => crypto.randomUUID();
 
-export const publicUser = (u: UserRow): UserInfo => ({ id: u.id, name: u.name, email: u.email, avatarUrl: u.avatar_url });
+/** Administradores do site. Fixo no código; ADMIN_EMAILS (separados por vírgula) substitui a lista. */
+const DEFAULT_ADMINS = "ricardoborges@gmail.com";
+const adminEmails = () => (process.env.ADMIN_EMAILS || DEFAULT_ADMINS).split(",").map((e) => e.trim().toLowerCase());
+
+/**
+ * Só vale como administrador quem entrou com o Google: o cadastro com senha não confirma o e-mail,
+ * então qualquer um poderia criar uma conta com o e-mail do administrador.
+ */
+const isAdmin = (u: UserRow) => !!u.email && !!u.google_sub && adminEmails().includes(u.email);
+
+export const publicUser = (u: UserRow): UserInfo => ({ id: u.id, name: u.name, email: u.email, avatarUrl: u.avatar_url, admin: isAdmin(u) });
 
 /** Nome de jogador humano: "(IA)" é reservado para os robôs, para a marca ser confiável. */
 export function humanName(raw: unknown): string {
@@ -214,10 +224,17 @@ export async function googleCallback(db: D1Database, g: GoogleConfig, req: Reque
   const email = info.email_verified && info.email ? info.email.toLowerCase() : null;
   let user = await db.prepare("SELECT * FROM users WHERE google_sub = ?").bind(info.sub).first<UserRow>();
   if (!user && email) {
-    // Mesma pessoa que já tinha conta com e-mail e senha: liga o Google a ela.
+    // Mesma pessoa que já tinha conta com e-mail e senha: liga o Google a ela. A senha é apagada, porque o
+    // cadastro com senha não confirma o e-mail: senão quem criou a conta antes com o e-mail de outra pessoa
+    // continuaria entrando nela depois que o dono de verdade chegasse pelo Google.
     user = await db.prepare("SELECT * FROM users WHERE email = ?").bind(email).first<UserRow>();
     if (user) {
-      await db.prepare("UPDATE users SET google_sub = ?, avatar_url = COALESCE(avatar_url, ?) WHERE id = ?").bind(info.sub, info.picture ?? null, user.id).run();
+      await db
+        .prepare("UPDATE users SET google_sub = ?, avatar_url = COALESCE(avatar_url, ?), password_hash = NULL WHERE id = ?")
+        .bind(info.sub, info.picture ?? null, user.id)
+        .run();
+      await db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(user.id).run();
+      user = { ...user, google_sub: info.sub, password_hash: null };
     }
   }
   if (!user) {

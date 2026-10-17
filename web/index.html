@@ -6,28 +6,68 @@
     <meta name="theme-color" content="#123528" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>Triminó</title>
+    <meta name="description" content="Triminó: o dominó triangular para jogar online com a família e os amigos, com vídeo e áudio na mesa." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,500,0..1,0&icon_names=mic,mic_off,videocam,videocam_off&display=block" rel="stylesheet" />
   </head>
   <body>
+    <!-- Logo: a pedra 1-3-5 do jogo (mesmas medidas, divisórias e pontinhos das peças 3D). -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true"><symbol id="logo-pedra" viewBox="-1 -1 66 61.43"><defs><linearGradient id="tm-face" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffdf7"/><stop offset="1" stop-color="#ece7da"/></linearGradient></defs><path d="M29.6 4.16Q32 0 34.4 4.16L61.6 51.27Q64 55.43 59.2 55.43L4.8 55.43Q0 55.43 2.4 51.27Z" transform="translate(0 4)" fill="#b9b2a0"/><path d="M29.6 4.16Q32 0 34.4 4.16L61.6 51.27Q64 55.43 59.2 55.43L4.8 55.43Q0 55.43 2.4 51.27Z" fill="url(#tm-face)" stroke="#fff" stroke-opacity=".7" stroke-width="1"/><path d="M32 36.95l0 13.12M32 36.95l-11.36 -6.56M32 36.95l11.36 -6.56" stroke="#191919" stroke-opacity=".85" stroke-width="1.02" stroke-linecap="round" fill="none"/><circle cx="32" cy="21.91" r="2.18" fill="#ec7a2c"/><circle cx="49.68" cy="47.16" r="2.18" fill="#1f6fc0"/><circle cx="45.03" cy="44.47" r="2.18" fill="#1f6fc0"/><circle cx="40.37" cy="41.78" r="2.18" fill="#1f6fc0"/><circle cx="17.7" cy="49.24" r="2.18" fill="#d6322c"/><circle cx="14.2" cy="43.19" r="2.18" fill="#d6322c"/><circle cx="18.97" cy="44.47" r="2.18" fill="#d6322c"/><circle cx="23.75" cy="45.75" r="2.18" fill="#d6322c"/><circle cx="20.25" cy="39.7" r="2.18" fill="#d6322c"/></symbol></svg>
     <!-- Site: landing (/), varanda (/varanda). A mesa (/mesa/CODIGO) é o #app. -->
     <div id="site" class="site" hidden>
       <!-- ---------- landing ---------- -->
       <div id="landing" class="landing" hidden>
-        <nav class="site-nav">
-          <a href="/" class="site-brand"><svg viewBox="0 0 64 56" aria-hidden="true"><path d="M32 2 62 54H2Z" /></svg>Triminó</a>
-          <a href="#entrar" class="chip nav-cta">Entrar</a>
+        <nav class="site-nav landing-nav" id="landing-nav">
+          <a href="/" class="site-brand"><svg viewBox="-1 -1 66 61.43" aria-hidden="true"><use href="#logo-pedra" /></svg>Triminó</a>
+          <div class="nav-links">
+            <a href="#regras">Como se joga</a>
+            <a href="#recursos">Recursos</a>
+          </div>
+          <a href="#entrar" class="primary button-link nav-cta">Jogar agora</a>
         </nav>
 
-        <header class="hero">
-          <div class="hero-copy">
-            <p class="eyebrow">Dominó triangular · 2 a 4 jogadores</p>
-            <h1>O jogo da mesa de casa, agora com todo mundo junto.</h1>
-            <p class="lead">
-              Monte pontes e mandalas, bata primeiro e veja a cara de quem ficou com a mão cheia.
-              Vídeo e áudio direto na mesa, para jogar com a família e os amigos de qualquer lugar.
-            </p>
-            <div class="hero-tiles" id="hero-tiles" aria-hidden="true"></div>
-          </div>
+        <header class="hero-stage">
+          <div id="hero-scene" class="hero-scene"></div>
+          <div class="hero-shade" aria-hidden="true"></div>
+          <div class="hero">
+            <div class="hero-copy">
+              <p class="eyebrow"><span class="eyebrow-dot"></span>Dominó triangular · 2 a 4 jogadores</p>
+              <h1>O jogo de dominó preferido da família, <em>agora também online</em></h1>
+              <p class="lead">
+                Monte pontes e mandalas, para jogar com a família e amigos de qualquer lugar.
+              </p>
+              <div class="hero-actions">
+                <a href="#entrar" id="hero-cta" class="primary button-link cta-big">Armar uma mesa</a>
+                <a href="#regras" class="ghost-link">Como se joga <span aria-hidden="true">→</span></a>
+              </div>
+              <ul class="hero-facts" aria-label="Destaques">
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg>Grátis</li>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg>Sem instalar nada</li>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg>Vídeo na mesa</li>
+              </ul>
+              <p class="soon-badge">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18V10h12v8a1 1 0 0 1-1 1h-1v3h-2v-3h-4v3H8v-3H7a1 1 0 0 1-1-1zm-3-8h2v6H3zm16 0h2v6h-2zM6.6 9a5.5 5.5 0 0 1 2.7-4.1L8.2 3.2l.8-.5 1.2 1.8a5.6 5.6 0 0 1 3.6 0l1.2-1.8.8.5-1.1 1.7A5.5 5.5 0 0 1 17.4 9zM10 7.2a.7.7 0 1 0 0-1.4.7.7 0 0 0 0 1.4zm4 0a.7.7 0 1 0 0-1.4.7.7 0 0 0 0 1.4z" /></svg>
+                Versão Android <b>em breve</b>
+              </p>
+              <div class="hero-tiles" id="hero-tiles" aria-hidden="true"></div>
+            </div>
 
+          </div>
+          <a href="#entrar" class="scroll-cue" aria-label="Rolar para baixo"><span></span></a>
+        </header>
+
+        <div class="join reveal">
+          <div class="join-copy">
+            <p class="eyebrow">Sua cadeira está guardada</p>
+            <h2>Entre e <em>arme sua mesa</em> em segundos.</h2>
+            <ul class="join-list">
+              <li><b>Com conta</b> suas partidas entram nas estatísticas e no ranking.</li>
+              <li><b>Com o Google</b> é um clique, sem senha nova para lembrar.</li>
+              <li><b>Como convidado</b> basta um nome para sentar numa mesa já aberta. Ideal para quem chegou pelo link.</li>
+            </ul>
+          </div>
           <section id="entrar" class="card auth-card" aria-label="Entrar">
             <!-- Quem já entrou (conta ou convidado) vê só o atalho para a varanda. -->
             <div id="auth-welcome" class="auth-welcome" hidden>
@@ -38,6 +78,10 @@
             </div>
 
             <div id="auth-forms">
+              <div class="auth-head">
+                <h2>Sente-se à mesa</h2>
+                <p>Entre para jogar ou para assistir uma partida.</p>
+              </div>
               <p id="auth-invite" class="auth-invite" hidden></p>
               <div class="tabs" role="tablist">
                 <button role="tab" class="tab active" data-tab="login" aria-selected="true">Entrar</button>
@@ -69,40 +113,134 @@
 
               <form id="guest-form" class="auth-form" data-panel="guest" hidden>
                 <label>Como quer ser chamado? <input name="name" maxlength="24" required autocomplete="nickname" /></label>
-                <p class="hint">Sem cadastro. Convidados jogam normalmente, mas as partidas não contam para o ranking.</p>
+                <p class="hint">Sem cadastro. Convidados entram nas mesas já abertas, mas não armam mesas, e as partidas não contam para o ranking.</p>
                 <button type="submit" class="primary">Entrar como convidado</button>
               </form>
               <p id="auth-error" class="form-error" role="alert"></p>
             </div>
           </section>
-        </header>
+        </div>
 
-        <section class="features" aria-label="O que tem no Triminó">
-          <article><span class="feature-icon">🎥</span><h3>Vídeo na mesa</h3><p>Câmera e microfone de cada jogador ao lado do tabuleiro. Ninguém precisa abrir outro aplicativo.</p></article>
-          <article><span class="feature-icon">🪑</span><h3>A varanda</h3><p>Veja as mesas abertas e quem está jogando em cada uma. Sente numa mesa livre ou arme a sua.</p></article>
-          <article><span class="feature-icon">👀</span><h3>Assista partidas</h3><p>Entre como espectador numa partida em andamento. Se quiser conversar, peça e o anfitrião libera.</p></article>
-          <article><span class="feature-icon">🤖</span><h3>Jogadores IA</h3><p>Faltou gente? Complete a mesa com Ricardo, Ilana e Henrique, os robôs da casa.</p></article>
-          <article><span class="feature-icon">📊</span><h3>Estatísticas</h3><p>Partidas, vitórias e pontuações ficam guardadas na sua conta, prontas para o ranking.</p></article>
-          <article><span class="feature-icon">📲</span><h3>Chame pelo WhatsApp</h3><p>Mande o link da mesa direto para o grupo da família. Quem abrir já cai na sua mesa.</p></article>
+        <section id="numeros" class="facts-strip reveal" aria-label="O jogo em números">
+          <div><strong>56</strong><span>pedras, de 0-0-0 a 5-5-5</span></div>
+          <div><strong>2–4</strong><span>jogadores por mesa</span></div>
+          <div><strong>400</strong><span>pontos para levar a partida</span></div>
+          <div><strong>0</strong><span>downloads: abre no navegador</span></div>
         </section>
 
-        <section class="rules" aria-label="Como se joga">
-          <h2>Como se joga</h2>
-          <ol>
-            <li><b>Encaixe as pontas.</b> Cada pedra tem três números; os cantos que encostam precisam bater.</li>
-            <li><b>Ponte vale 40, mandala vale 50.</b> Feche o círculo de seis pedras em volta de um ponto e comemore.</li>
-            <li><b>Bata primeiro.</b> Quem se livra da última pedra ganha +25 e leva os pontos que sobraram na mão dos outros.</li>
+        <section id="regras" class="section steps" aria-labelledby="regras-title">
+          <header class="section-head reveal">
+            <p class="eyebrow">Como se joga</p>
+            <h2 id="regras-title">Simples de aprender. <em>Difícil de largar.</em></h2>
+            <p class="section-lead">As regras cabem num guardanapo. O resto é estratégia, sorte e um pouco de provocação.</p>
+          </header>
+          <ol class="step-grid">
+            <li class="step reveal">
+              <div class="step-art" data-art="encaixe"></div>
+              <div class="step-body">
+                <span class="step-num">01</span>
+                <h3>Encaixe as pontas</h3>
+                <p>Cada pedra tem três números. Os dois cantos que encostam na mesa precisam bater.</p>
+              </div>
+            </li>
+            <li class="step reveal">
+              <div class="step-art" data-art="ponte"></div>
+              <div class="step-body">
+                <span class="step-num">02</span>
+                <h3>Faça uma ponte <span class="step-pts">+40</span></h3>
+                <p>Encoste um canto numa pedra do outro lado e ganhe pontos extras pela travessia.</p>
+              </div>
+            </li>
+            <li class="step reveal">
+              <div class="step-art" data-art="mandala"></div>
+              <div class="step-body">
+                <span class="step-num">03</span>
+                <h3>Feche a mandala <span class="step-pts">+50</span></h3>
+                <p>Seis pedras em volta de um ponto. É a jogada mais bonita da mesa, e a mais comemorada.</p>
+              </div>
+            </li>
+            <li class="step reveal">
+              <div class="step-art" data-art="bater"></div>
+              <div class="step-body">
+                <span class="step-num">04</span>
+                <h3>Bata primeiro <span class="step-pts">+25</span></h3>
+                <p>Quem se livra da última pedra leva o bônus e os pontos que sobraram na mão dos outros.</p>
+              </div>
+            </li>
           </ol>
-          <a href="#entrar" class="primary button-link">Quero jogar</a>
         </section>
 
-        <footer class="site-footer">Triminó · feito para jogar com quem a gente gosta</footer>
+        <section id="recursos" class="section" aria-labelledby="recursos-title">
+          <header class="section-head reveal">
+            <p class="eyebrow">Recursos</p>
+            <h2 id="recursos-title">Tudo o que a mesa da sala tinha. <em>E o que faltava.</em></h2>
+          </header>
+          <div class="bento">
+            <article class="bento-card bento-video reveal">
+              <div class="video-mock" aria-hidden="true">
+                <div class="cam" style="--c: #d9534f"><span>R</span></div>
+                <div class="cam" style="--c: #3a7bd5"><span>I</span></div>
+                <div class="video-board" id="video-board"></div>
+                <div class="cam" style="--c: #e0a526"><span>H</span></div>
+                <div class="cam" style="--c: #8e5cc8"><span>Você</span></div>
+              </div>
+              <div class="bento-text">
+                <span class="bento-icon"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="m16 10 5-3v10l-5-3" /></svg></span>
+                <h3>Vídeo e áudio na mesa</h3>
+                <p>Câmera e microfone de cada jogador ao lado do tabuleiro. Ninguém precisa abrir outro aplicativo para ver a cara do adversário.</p>
+              </div>
+            </article>
+            <article class="bento-card reveal">
+              <span class="bento-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="2" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="2" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="2" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2" /></svg></span>
+              <h3>A varanda</h3>
+              <p>Veja as mesas abertas e quem está jogando em cada uma. Sente numa mesa livre ou arme a sua.</p>
+            </article>
+            <article class="bento-card reveal">
+              <span class="bento-icon"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg></span>
+              <h3>Assista partidas</h3>
+              <p>Entre como espectador numa partida em andamento. Se quiser conversar, peça e o anfitrião libera.</p>
+            </article>
+            <article class="bento-card bento-half reveal">
+              <span class="bento-icon"><svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg></span>
+              <h3>Mesas privadas</h3>
+              <p>Arme uma mesa só para a família. Ela não aparece na varanda, e só entra quem recebeu o link.</p>
+            </article>
+            <article class="bento-card bento-half reveal">
+              <span class="bento-icon"><svg viewBox="0 0 24 24"><path d="M4 20V11M10 20V4M16 20v-6M21 20H3" /></svg></span>
+              <h3>Estatísticas e ranking</h3>
+              <p>Partidas, vitórias e pontuações ficam guardadas na sua conta. Descubra quem manda na família.</p>
+            </article>
+            <article class="bento-card bento-wa reveal">
+              <div class="bento-text">
+                <span class="bento-icon wa"><svg viewBox="0 0 24 24"><path d="M21 12a8.5 8.5 0 0 1-12.6 7.4L3 21l1.6-5.2A8.5 8.5 0 1 1 21 12z" /></svg></span>
+                <h3>Chame pelo WhatsApp</h3>
+                <p>Mande o link da mesa direto para o grupo da família. Quem abrir já cai na sua mesa, sem cadastro.</p>
+              </div>
+              <div class="wa-mock" aria-hidden="true">
+                <p class="bubble">Bora jogar Triminó? Entra na minha mesa: <span>…/mesa/VOVO7</span></p>
+                <p class="bubble reply">Tô entrando!</p>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="final-cta reveal" aria-labelledby="final-title">
+          <div class="final-tiles" id="final-tiles" aria-hidden="true"></div>
+          <h2 id="final-title">A mesa está posta.</h2>
+          <p>Chame a turma, embaralhe as pedras e que vença o melhor (ou o mais sortudo).</p>
+          <a href="#entrar" class="primary button-link cta-big">Quero jogar</a>
+        </section>
+
+        <footer class="site-footer">
+          <span class="site-brand"><svg viewBox="-1 -1 66 61.43" aria-hidden="true"><use href="#logo-pedra" /></svg>Triminó</span>
+          <span>Feito para jogar com quem a gente gosta. Versão Android em breve.</span>
+        </footer>
       </div>
 
       <!-- ---------- varanda ---------- -->
       <div id="varanda" class="varanda" hidden>
         <nav class="site-nav">
-          <a href="/" class="site-brand" data-link><svg viewBox="0 0 64 56" aria-hidden="true"><path d="M32 2 62 54H2Z" /></svg>Triminó</a>
+          <a href="/" class="site-brand" data-link><svg viewBox="-1 -1 66 61.43" aria-hidden="true"><use href="#logo-pedra" /></svg>Triminó</a>
           <span class="nav-title">Varanda</span>
           <span id="me-chip" class="me-chip"></span>
           <button id="logout" class="chip">Sair</button>
@@ -110,9 +248,14 @@
 
         <div class="varanda-grid">
           <aside class="varanda-side">
+            <section id="create-guest" class="card panel-card" hidden>
+              <h2>Armar uma mesa</h2>
+              <p class="muted">Convidados sentam em qualquer mesa aberta. Para armar a sua, crie uma conta: é rapidinho.</p>
+              <button id="guest-signup" class="primary">Criar conta</button>
+            </section>
             <form id="create-form" class="card panel-card">
               <h2>Armar uma mesa</h2>
-              <label>Nome da mesa <input name="title" maxlength="40" placeholder="Mesa da vó" /></label>
+              <p class="muted">A mesa ganha um código para você compartilhar com quem vai jogar.</p>
               <label class="check"><input type="checkbox" name="private" /> Mesa privada (só entra quem tiver o link)</label>
               <button type="submit" class="primary">Criar mesa</button>
             </form>
@@ -136,6 +279,7 @@
           </aside>
 
           <main class="mesas-wrap">
+            <p id="varanda-notice" class="varanda-notice" role="status" hidden></p>
             <header class="mesas-head">
               <h1>Mesas abertas</h1>
               <span id="mesas-count" class="muted"></span>
@@ -148,10 +292,8 @@
 
     <div id="app" class="app" hidden>
       <header class="topbar">
-        <strong class="brand">Triminó</strong>
         <button id="room-code" class="chip" title="Copiar link da mesa"></button>
-        <a id="share-wa" class="chip wa" target="_blank" rel="noopener" title="Chamar pelo WhatsApp"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.1-1.2l-.5-.3Z"/></svg><span class="label"> WhatsApp</span></a>
-        <button id="watchers-toggle" class="chip" title="Espectadores" aria-expanded="false" aria-controls="watchers-panel">👁<span id="watchers-count">0</span></button>
+        <a id="share-wa" class="chip wa" target="_blank" rel="noopener" title="Convidar pelo WhatsApp"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.1-1.2l-.5-.3Z"/></svg><span class="label"> Convidar</span></a>
         <button id="log-toggle" class="chip" title="Histórico da partida" aria-expanded="false" aria-controls="log-panel">📜<span class="label"> Histórico</span></button>
         <button id="sheet-toggle" class="chip" title="Folha de pontos" aria-expanded="false" aria-controls="sheet-panel">📋<span class="label"> Pontos</span></button>
         <button id="tokens-toggle" class="chip" title="Tokens gastos pelos jogadores IA" aria-expanded="false" aria-controls="tokens-panel" hidden>🪙<span class="label"> Tokens</span></button>
@@ -178,14 +320,11 @@
         <aside class="side">
           <div id="videos" class="videos"></div>
           <div class="media-tools">
-            <button id="mic" class="tool">🎤</button>
-            <button id="cam" class="tool">📷</button>
+            <button id="mic" class="tool" aria-pressed="true"><span class="ms" aria-hidden="true">mic</span><span class="tool-label">Microfone</span></button>
+            <button id="cam" class="tool" aria-pressed="true"><span class="ms" aria-hidden="true">videocam</span><span class="tool-label">Câmera</span></button>
             <button id="call-request" class="secondary call-request" hidden>✋ Pedir para entrar na conversa</button>
           </div>
-          <ul id="chat-log" class="log" aria-label="Chat"></ul>
-          <form id="chat-form" class="chat">
-            <input name="text" maxlength="300" placeholder="Mensagem…" autocomplete="off" />
-          </form>
+          <ul id="call-requests" class="call-requests" aria-label="Pedidos para entrar na conversa" hidden></ul>
         </aside>
       </main>
 
@@ -195,14 +334,6 @@
           <button id="log-close" class="chip" title="Fechar">✕</button>
         </header>
         <ul id="log" class="log"></ul>
-      </section>
-
-      <section id="watchers-panel" class="log-panel watchers-panel" hidden aria-label="Espectadores">
-        <header>
-          <strong>Espectadores</strong>
-          <button id="watchers-close" class="chip" title="Fechar">✕</button>
-        </header>
-        <ul id="watchers" class="watchers"></ul>
       </section>
 
       <section id="tokens-panel" class="log-panel tokens-panel" hidden aria-label="Tokens dos jogadores IA">

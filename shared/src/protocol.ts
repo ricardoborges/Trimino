@@ -155,6 +155,8 @@ export interface GameState {
     frontier: { r: number; c: number }[];
     canDraw: boolean;
     canPass: boolean;
+    /** Pode adicionar e remover jogadores IA (só o administrador do site). */
+    canManageBots?: boolean;
   };
 }
 
@@ -194,7 +196,6 @@ export type ClientMessage =
   | { t: "place"; tileId: number; r: number; c: number; rot: number }
   | { t: "draw" }
   | { t: "pass" }
-  | { t: "chat"; text: string }
   | { t: "signal"; to: string; data: SignalData };
 
 export type ServerMessage =
@@ -212,7 +213,6 @@ export type ServerMessage =
   | { t: "state"; state: GameState }
   | { t: "peerLeft"; id: string }
   | { t: "signal"; from: string; data: SignalData }
-  | { t: "chat"; from: string; name: string; text: string }
   | { t: "error"; message: string };
 
 // ---------------- API HTTP (site, varanda e contas) ----------------
@@ -223,6 +223,8 @@ export interface UserInfo {
   name: string;
   email: string | null;
   avatarUrl: string | null;
+  /** Administrador do site (e-mail confirmado pelo Google): só ele mexe nos jogadores IA. */
+  admin?: boolean;
 }
 
 /** Mesa aberta, como aparece na varanda. */

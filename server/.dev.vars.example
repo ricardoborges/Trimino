@@ -5,6 +5,10 @@
 # GOOGLE_CLIENT_ID=
 # GOOGLE_CLIENT_SECRET=
 
+# Administradores do site (só eles adicionam jogadores IA). Padrão: ricardoborges@gmail.com.
+# Só valem quando entram com o Google.
+# ADMIN_EMAILS=
+
 # Endereço público do site (usado no redirecionamento do Google). No dev, o do Vite.
 PUBLIC_URL=http://localhost:5173
 

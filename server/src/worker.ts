@@ -26,7 +26,7 @@ export default {
         const code = normalizeRoom(url.searchParams.get("sala"));
         if (!code) return new Response("Informe a sala (?sala=CODIGO).", { status: 400 });
         const user = await currentUser(env.DB, req);
-        const visitor: Visitor = user ? { userId: user.id, name: user.name } : {};
+        const visitor: Visitor = user ? { userId: user.id, name: user.name, admin: !!user.admin } : {};
         // Os cabeçalhos de identidade são sempre definidos aqui, nunca repassados do cliente.
         const headers = new Headers(req.headers);
         headers.set("x-trimino-room", code);
@@ -57,14 +57,14 @@ export default {
         case "GET /api/mesas":
           return json({ mesas: await listMesas(env.DB) });
         case "POST /api/mesas": {
-          // Criar mesa: reserva um código livre e grava o nome (e se é privada) no objeto da mesa.
+          // Criar mesa: reserva um código aleatório livre (que também é o nome: "Mesa ABCDE") e grava se é privada.
           sameOrigin(req, google.publicUrl);
-          const body = (await req.json().catch(() => ({}))) as { title?: unknown; private?: unknown };
           const user = await currentUser(env.DB, req);
-          const title = String(body.title ?? "").replace(/\s+/g, " ").trim().slice(0, 40) || (user ? `Mesa de ${user.name}` : "");
+          if (!user) throw new HttpError(403, "Convidados não podem armar mesas. Crie uma conta para armar a sua.");
+          const body = (await req.json().catch(() => ({}))) as { private?: unknown };
           let code = randomRoom();
           for (let i = 0; i < 5 && (await env.DB.prepare("SELECT 1 FROM mesas WHERE code = ?").bind(code).first()); i++) code = randomRoom();
-          await env.MESA.get(env.MESA.idFromName(code)).configure({ code, title, private: !!body.private });
+          await env.MESA.get(env.MESA.idFromName(code)).configure({ code, title: "", private: !!body.private });
           return json({ code });
         }
         case "GET /api/ranking":

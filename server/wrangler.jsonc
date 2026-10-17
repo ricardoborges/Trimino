@@ -22,8 +22,7 @@
     {
       "binding": "DB",
       "database_name": "trimino",
-      // Troque pelo id que `npx wrangler d1 create trimino` mostrar (o dev local funciona com qualquer valor).
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "84f18f5a-ab90-4e6d-9d76-29d11327edfd",
       "migrations_dir": "migrations"
     }
   ],

@@ -34,15 +34,27 @@ As variáveis do dev ficam em `server/.dev.vars` (veja `server/.dev.vars.example
 
 ### Publicar
 
+O deploy é automático: cada push no branch `producao` roda os testes, aplica as migrações no D1 e publica o Worker (`.github/workflows/deploy.yml`). Em qualquer outro branch, e nos PRs, o CI só roda os testes (`ci.yml`).
+
+```bash
+git push origin main:producao                     # publica o que está no main
+```
+
+Todo deploy reinicia as mesas: a partida fica na memória do Durable Object, então quem estiver jogando perde a partida. Publique quando a varanda estiver vazia.
+
+Configuração (uma vez):
+- No GitHub, crie os secrets do repositório `CLOUDFLARE_API_TOKEN` (token com edição de Workers Scripts e D1) e `CLOUDFLARE_ACCOUNT_ID`.
+- Na Cloudflare, cadastre os secrets do Worker:
+
 ```bash
 cd server
-npx wrangler d1 create trimino                    # uma vez: copie o database_id para o wrangler.jsonc
 npx wrangler secret put GOOGLE_CLIENT_ID          # opcional: login com Google
 npx wrangler secret put GOOGLE_CLIENT_SECRET
 npx wrangler secret put PUBLIC_URL                # ex.: https://trimino.exemplo.com
 npx wrangler secret put DEEPSEEK_API_KEY          # opcional: jogadores IA
-cd .. && npm run deploy                           # compila o site, aplica as migrações no D1 e publica
 ```
+
+Para publicar à mão, sem o CI: `npm run deploy`.
 
 **Login com Google:** crie um "ID do cliente OAuth" do tipo aplicativo da Web no Google Cloud Console e cadastre `<PUBLIC_URL>/auth/google/callback` como URI de redirecionamento. Sem `GOOGLE_CLIENT_ID`, o botão do Google não aparece.
 
@@ -67,7 +79,7 @@ cd android && ./gradlew testDebugUnitTest
 ## Site, contas e varanda
 
 - **Landing page** (`/`): apresenta o jogo e tem o login. Dá para criar conta com e-mail e senha, entrar com o Google ou jogar como **convidado**, só com um nome.
-- **Contas:** senha guardada com PBKDF2-SHA256 (100 mil iterações, sal aleatório). A sessão fica num cookie `HttpOnly` de 30 dias, e o D1 guarda só o hash do token. Se alguém entra com o Google usando um e-mail verificado que já tem conta, as duas formas de login passam a abrir a mesma conta.
+- **Contas:** senha guardada com PBKDF2-SHA256 (100 mil iterações, sal aleatório). A sessão fica num cookie `HttpOnly` de 30 dias, e o D1 guarda só o hash do token. Se alguém entra com o Google usando um e-mail verificado que já tem conta com senha, a conta passa a ser do Google: a senha é apagada e as sessões abertas caem. Como o cadastro com senha não confirma o e-mail, isso impede que quem criou a conta antes com o e-mail de outra pessoa continue entrando nela.
 - **Varanda** (`/varanda`): lista as mesas abertas, quem está sentado em cada uma, a pontuação, os lugares livres e quantos estão assistindo. Dali dá para **sentar**, **assistir** ou **armar uma mesa** (com nome, e privada se quiser; mesa privada não aparece na lista, só entra quem tem o link). A lista atualiza a cada 4 segundos.
 - **Link da mesa:** `/mesa/CODIGO`. Quem abre sem ter entrado passa antes pela landing (com a aba de convidado já aberta) e depois cai direto na mesa. Os links antigos `?sala=CODIGO` continuam funcionando.
 - **WhatsApp:** o botão do WhatsApp no topo da mesa e na tela de espera abre o WhatsApp com o convite e o link da mesa prontos.
@@ -111,7 +123,9 @@ Quando uma partida termina, o resultado vai para o D1: a tabela `matches` guarda
 
 ## Jogadores IA
 
-Na tela de espera, o anfitrião (quem criou a sala) pode clicar em **+ Adicionar IA** para completar a mesa com robôs, até 4 lugares no total. Cada robô tem um ✕ para remover. Eles entram nesta ordem: **Ricardo (IA)**, **Ilana (IA)** e **Henrique (IA)**. Todo jogador IA tem "(IA)" no nome, e humanos não podem usar essa marca.
+Só o **administrador do site** (`ricardoborges@gmail.com`, fixo no código; a variável `ADMIN_EMAILS` substitui a lista) pode adicionar e remover robôs. Os outros jogadores veem os robôs na mesa, mas não têm os botões. O administrador só é reconhecido quando entra **com o Google**, porque o cadastro com senha não confirma o e-mail.
+
+Na tela de espera, o administrador pode clicar em **+ Adicionar IA** para completar a mesa com robôs, até 4 lugares no total. Cada robô tem um ✕ para remover. Eles entram nesta ordem: **Ricardo (IA)**, **Ilana (IA)** e **Henrique (IA)**. Todo jogador IA tem "(IA)" no nome, e humanos não podem usar essa marca.
 
 - Com robô na mesa, o botão **🪙 Tokens** no topo mostra quantos tokens cada jogada de IA gastou (entrada, saída e raciocínio), o tempo de cada chamada e os totais da partida. Jogadas em que o modelo não foi chamado (jogada única, sem chave ou com falha) aparecem com 0 tokens e o motivo.
 - O servidor calcula as jogadas válidas do robô e a pontuação de cada uma. O modelo da DeepSeek escolhe entre elas, equilibrando pontos agora com livrar-se de peças pesadas. A regra "sem dicas" vale só para os humanos.

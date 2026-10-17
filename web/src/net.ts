@@ -27,7 +27,8 @@ export class Connection {
     ws.onclose = (e) => {
       this.onStatus(false);
       if (e.code === 4000) this.onKicked?.();
-      if (this.closed || e.code === 4000) return;
+      if (e.code === 4003) this.onRefused?.(e.reason);
+      if (this.closed || e.code === 4000 || e.code === 4003) return;
       const delay = Math.min(10_000, 500 * 2 ** this.retry++);
       setTimeout(() => this.open(), delay);
     };
@@ -35,6 +36,8 @@ export class Connection {
 
   /** O servidor fechou porque a mesma identidade conectou em outro lugar. */
   onKicked?: () => void;
+  /** O servidor recusou a entrada (convidado numa mesa que não está aberta). */
+  onRefused?: (reason: string) => void;
 
   send(msg: ClientMessage): void {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));

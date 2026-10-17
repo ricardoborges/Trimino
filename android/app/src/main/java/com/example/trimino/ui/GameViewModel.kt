@@ -52,7 +52,6 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     private set
 
   val remoteVideos = mutableStateMapOf<String, VideoTrack>()
-  val chat = mutableStateListOf<String>()
 
   private var socket: GameSocket? = null
   var mesh: Mesh? = null
@@ -93,11 +92,6 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
       is ServerMessage.Signal -> mesh?.onSignal(msg.from, msg.data)
       is ServerMessage.PeerLeft -> mesh?.close(msg.id)
       is ServerMessage.State -> onState(msg.state)
-      is ServerMessage.Chat -> {
-        chat += "${msg.name}: ${msg.text}"
-        if (chat.size > 30) chat.removeAt(0)
-        if (msg.from != myId) showToast("${msg.name}: ${msg.text}")
-      }
       is ServerMessage.Error -> showToast(msg.message)
     }
   }
@@ -158,10 +152,6 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
   fun removeBot(id: String) = socket?.send(ClientMessage.RemoveBot(id))
 
   fun nextRound() = socket?.send(ClientMessage.NextRound)
-
-  fun sendChat(text: String) {
-    if (text.isNotBlank()) socket?.send(ClientMessage.Chat(text.take(300)))
-  }
 
   fun toggleAudio() {
     audioOn = !audioOn

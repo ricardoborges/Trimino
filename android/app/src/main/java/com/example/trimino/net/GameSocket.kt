@@ -53,7 +53,7 @@ class GameSocket(
             webSocket.close(code, null)
           }
 
-          override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = lost(webSocket, code)
+          override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = lost(webSocket, code, reason)
 
           override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             Log.w(TAG, "falha no websocket", t)
@@ -63,10 +63,12 @@ class GameSocket(
       )
   }
 
-  private fun lost(socket: WebSocket, code: Int) {
+  private fun lost(socket: WebSocket, code: Int, reason: String = "") {
     if (socket !== ws) return
     main.post { onStatus(false) }
-    if (closed || code == 4000) return
+    // 4003: convidado tentando abrir uma mesa vazia; não adianta tentar de novo.
+    if (code == 4003) main.post { onMessage(ServerMessage.Error(reason)) }
+    if (closed || code == 4000 || code == 4003) return
     val delay = minOf(10_000L, 500L shl minOf(retry++, 5))
     main.postDelayed(::open, delay)
   }

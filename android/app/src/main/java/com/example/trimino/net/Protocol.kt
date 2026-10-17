@@ -110,7 +110,6 @@ sealed interface ClientMessage {
 
   @Serializable @SerialName("pass") data object Pass : ClientMessage
 
-  @Serializable @SerialName("chat") data class Chat(val text: String) : ClientMessage
 
   @Serializable @SerialName("signal") data class Signal(val to: String, val data: SignalData) : ClientMessage
 }
@@ -127,7 +126,6 @@ sealed interface ServerMessage {
 
   @Serializable @SerialName("signal") data class Signal(val from: String, val data: SignalData) : ServerMessage
 
-  @Serializable @SerialName("chat") data class Chat(val from: String, val name: String, val text: String) : ServerMessage
 
   @Serializable @SerialName("error") data class Error(val message: String) : ServerMessage
 }

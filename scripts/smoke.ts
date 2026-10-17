@@ -19,8 +19,28 @@ interface Client {
   send(msg: object): void;
 }
 
-function client(name: string, watch = false): Promise<Client> {
-  const ws = new WebSocket(`${base}?sala=${room}`);
+const http = base.replace(/^ws/, "http").replace(/\/ws$/, "");
+
+/** Conta descartável: só quem tem conta abre mesa (convidado só entra numa mesa com gente). Devolve o cookie. */
+async function account(name: string): Promise<string> {
+  const res = await fetch(`${http}/api/signup`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, email: `smoke-${crypto.randomUUID()}@example.com`, password: crypto.randomUUID() }),
+  });
+  if (!res.ok) throw new Error(`cadastro falhou: ${res.status} ${await res.text()}`);
+  return res.headers.get("set-cookie")!.split(";")[0];
+}
+
+/** Convidado tentando abrir uma mesa vazia: devolve o código com que o servidor fechou. */
+function guestOpens(code: string): Promise<number> {
+  const ws = new WebSocket(`${base}?sala=${code}`);
+  ws.on("open", () => ws.send(JSON.stringify({ t: "join", room: code, name: "Zé", clientId: `ze-smoke-${code}` })));
+  return new Promise((r) => ws.on("close", (c) => r(c)));
+}
+
+function client(name: string, watch = false, cookie?: string): Promise<Client> {
+  const ws = new WebSocket(`${base}?sala=${room}`, cookie ? { headers: { cookie } } : {});
   const c: Client = { ws, id: "", peers: [], state: null, signals: 0, errors: [], inCall: false, notices: [], send: (m) => ws.send(JSON.stringify(m)) };
   ws.on("message", (raw) => {
     const m = JSON.parse(String(raw)) as ServerMessage;
@@ -57,7 +77,11 @@ const check = (label: string, ok: boolean) => {
   if (!ok) process.exitCode = 1;
 };
 
-const a = await client("Ana");
+const guestCreate = await fetch(`${http}/api/mesas`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+check("convidado não arma mesa pela API", guestCreate.status === 403);
+check("convidado não abre mesa vazia pelo WebSocket", (await guestOpens(room + "X")) === 4003);
+
+const a = await client("Ana", false, await account("Ana"));
 await wait(200);
 const b = await client("Bia");
 await wait(200);
@@ -65,6 +89,9 @@ check("quem entra recebe os pares para ofertar WebRTC", b.peers.includes(a.id));
 b.send({ t: "signal", to: a.id, data: { type: "offer", sdp: "x" } });
 await wait(100);
 check("sinalização é repassada", a.signals === 1);
+a.send({ t: "addBot" });
+await wait(150);
+check("só o administrador adiciona IA", a.errors.at(-1) === "Só o administrador pode mudar os jogadores IA." && !a.state?.you.canManageBots);
 b.send({ t: "start" });
 await wait(100);
 check("só o anfitrião inicia", b.errors.at(-1) === "Só o anfitrião pode iniciar.");
@@ -105,7 +132,8 @@ for (let i = 0; i < 500 && a.state?.phase === "playing"; i++) {
 const s = a.state!;
 console.log({ fase: s.phase, pecas: s.board.length, moves, draws, passes, placar: s.players.map((p) => `${p.name}=${p.score}`) });
 check("a rodada termina", s.phase === "roundOver" || s.phase === "gameOver");
-const playErrors = [...a.errors, ...b.errors].filter((e) => e !== "Só o anfitrião pode iniciar.");
+const expected = ["Só o anfitrião pode iniciar.", "Só o administrador pode mudar os jogadores IA."];
+const playErrors = [...a.errors, ...b.errors].filter((e) => !expected.includes(e));
 if (playErrors.length) console.log("erros:", playErrors);
 check("nenhum erro durante as jogadas", playErrors.length === 0);
 
