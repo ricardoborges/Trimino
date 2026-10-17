@@ -35,7 +35,8 @@ No lobby do app, informe o endereço do servidor:
 ```bash
 npm test                  # regras do jogo (vitest)
 npm run typecheck
-npm run smoke             # partida completa contra um servidor rodando
+npm run smoke             # partida completa contra um servidor rodando (TRIMINO_WS=ws://localhost:8787/ws para outra porta)
+npm run fixtures          # regenera os exemplos de estado usados no teste de protocolo do Android
 cd android && ./gradlew testDebugUnitTest
 ```
 
@@ -43,7 +44,9 @@ cd android && ./gradlew testDebugUnitTest
 
 - 56 peças: cada combinação de 0 a 5 aparece uma vez, em sentido horário.
 - Cada jogador recebe 9 peças em partidas de 2 jogadores e 7 peças com 3 ou 4.
-- Começa quem tem o triplo mais alto. Se ninguém tiver triplo, começa quem tem a peça de maior soma.
+- **Sorteio antes da primeira rodada:** cada jogador escolhe uma pedra virada para baixo, e quem tirar a maior começa. A maior é a de maior soma; no empate, vale a peça de números mais altos. Nas rodadas seguintes, quem começa passa para o próximo jogador.
+- A abertura pode ser feita com qualquer peça da mão.
+- **Sem dicas:** o jogo mostra todos os espaços livres encostados no jogo, mas não indica quais peças encaixam. Se a peça não servir, o servidor recusa a jogada.
 - A peça precisa encostar por uma aresta, e todos os cantos que tocam outras peças têm que bater.
 - Pontuação:
   - cada peça vale a soma dos números;

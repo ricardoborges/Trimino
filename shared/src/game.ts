@@ -18,6 +18,9 @@ export const SCORE = {
 export const MIN_PLAYERS = 2;
 export const MAX_PLAYERS = 4;
 
+/** Quantas pedras viradas para baixo aparecem no sorteio de quem começa. */
+export const LOTTERY_SLOTS = 12;
+
 export const handSize = (players: number): number => (players === 2 ? 9 : 7);
 
 export interface GamePlayer {
@@ -34,8 +37,17 @@ export interface PlaceResult {
 
 export class RuleError extends Error {}
 
+export interface LotPick {
+  playerId: string;
+  slot: number;
+  tile: Tile;
+}
+
+/** Ordem do sorteio: maior soma vence; empate decidido pela peça de maior id (números mais altos). */
+export const lotRank = (t: Tile): number => tileSum(t) * 100 + t.id;
+
 export class TriminoGame {
-  phase: Phase = "playing";
+  phase: Phase = "lottery";
   round = 0;
   players: GamePlayer[];
   pool: Tile[] = [];
@@ -44,7 +56,12 @@ export class TriminoGame {
   turn = 0;
   drawsThisTurn = 0;
   consecutivePasses = 0;
-  openingTileId: number | null = null;
+  /** Pedras do sorteio (viradas para baixo) e o que cada jogador tirou. */
+  lotteryPool: Tile[] = [];
+  lotteryPicks: LotPick[] = [];
+  lotteryWinnerId: string | null = null;
+  /** Índice de quem abriu a rodada atual; a próxima rodada começa com o seguinte. */
+  private starter = 0;
   roundSummary: RoundSummary | null = null;
   log: string[] = [];
 
@@ -56,7 +73,47 @@ export class TriminoGame {
     if (players.length < MIN_PLAYERS || players.length > MAX_PLAYERS)
       throw new RuleError(`São necessários de ${MIN_PLAYERS} a ${MAX_PLAYERS} jogadores.`);
     this.players = players.map((p) => ({ ...p, hand: [], score: 0 }));
-    this.startRound();
+    this.lotteryPool = this.shuffled().slice(0, LOTTERY_SLOTS);
+    this.addLog("Sorteio: cada jogador escolhe uma pedra. A maior começa.");
+  }
+
+  private shuffled(): Tile[] {
+    const tiles = fullSet();
+    for (let i = tiles.length - 1; i > 0; i--) {
+      const j = Math.floor(this.random() * (i + 1));
+      [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
+    }
+    return tiles;
+  }
+
+  // ---------- sorteio ----------
+
+  pickLot(playerId: string, slot: number): void {
+    if (this.phase !== "lottery") throw new RuleError("O sorteio já terminou.");
+    const p = this.player(playerId);
+    if (!p) throw new RuleError("Você não está nesta partida.");
+    if (this.lotteryPicks.some((x) => x.playerId === playerId)) throw new RuleError("Você já tirou sua pedra.");
+    if (!Number.isInteger(slot) || slot < 0 || slot >= this.lotteryPool.length) throw new RuleError("Pedra inválida.");
+    if (this.lotteryPicks.some((x) => x.slot === slot)) throw new RuleError("Essa pedra já foi escolhida.");
+    const tile = this.lotteryPool[slot];
+    this.lotteryPicks.push({ playerId, slot, tile });
+    this.addLog(`${p.name} tirou ${tile.v.join("-")}.`);
+    if (this.lotteryPicks.length === this.players.length) {
+      const best = this.lotteryPicks.reduce((a, b) => (lotRank(b.tile) > lotRank(a.tile) ? b : a));
+      this.lotteryWinnerId = best.playerId;
+      this.addLog(`${this.player(best.playerId)!.name} tirou a maior pedra e começa!`);
+    }
+  }
+
+  get lotteryDone(): boolean {
+    return this.phase === "lottery" && this.lotteryWinnerId !== null;
+  }
+
+  /** Encerra o sorteio e dá as cartas da primeira rodada. */
+  beginFirstRound(): void {
+    if (!this.lotteryDone) throw new RuleError("O sorteio ainda não terminou.");
+    this.starter = this.players.findIndex((p) => p.id === this.lotteryWinnerId);
+    this.startRound(true);
   }
 
   get current(): GamePlayer {
@@ -67,8 +124,10 @@ export class TriminoGame {
     return this.players.find((p) => p.id === id);
   }
 
-  startRound(): void {
+  startRound(first = false): void {
     if (this.phase === "gameOver") throw new RuleError("O jogo acabou.");
+    if (this.phase === "lottery" && !first) throw new RuleError("O sorteio ainda não terminou.");
+    if (!first) this.starter = (this.starter + 1) % this.players.length;
     this.round++;
     this.phase = "playing";
     this.board.clear();
@@ -77,26 +136,12 @@ export class TriminoGame {
     this.drawsThisTurn = 0;
     this.consecutivePasses = 0;
 
-    this.pool = fullSet();
-    for (let i = this.pool.length - 1; i > 0; i--) {
-      const j = Math.floor(this.random() * (i + 1));
-      [this.pool[i], this.pool[j]] = [this.pool[j], this.pool[i]];
-    }
+    this.pool = this.shuffled();
     const n = handSize(this.players.length);
     for (const p of this.players) p.hand = this.pool.splice(0, n);
 
-    // Começa quem tiver o triplo mais alto; sem triplos, a peça de maior soma.
-    let best: { player: number; tile: Tile; rank: number } | null = null;
-    this.players.forEach((p, i) => {
-      for (const t of p.hand) {
-        const rank = (isTriple(t) ? 1000 : 0) + tileSum(t) * 100 + t.id;
-        if (!best || rank > best.rank) best = { player: i, tile: t, rank };
-      }
-    });
-    const b = best!;
-    this.turn = b.player;
-    this.openingTileId = b.tile.id;
-    this.addLog(`Rodada ${this.round}: ${this.current.name} abre com ${b.tile.v.join("-")}.`);
+    this.turn = this.starter;
+    this.addLog(`Rodada ${this.round}: ${this.current.name} começa com a peça que quiser.`);
   }
 
   // ---------- consultas ----------
@@ -116,7 +161,7 @@ export class TriminoGame {
   }
 
   /** Células vazias vizinhas (por aresta) de alguma peça já no tabuleiro. */
-  private frontier(): [number, number][] {
+  frontier(): [number, number][] {
     if (this.board.size === 0) return [[0, 0]];
     const seen = new Set<string>();
     const out: [number, number][] = [];
@@ -134,7 +179,7 @@ export class TriminoGame {
   validMoves(playerId: string): Move[] {
     const p = this.player(playerId);
     if (!p || this.phase !== "playing" || this.current.id !== playerId) return [];
-    const tiles = this.openingTileId !== null ? p.hand.filter((t) => t.id === this.openingTileId) : p.hand;
+    const tiles = p.hand;
     const moves: Move[] = [];
     const cells = this.frontier();
     for (const t of tiles)
@@ -147,11 +192,11 @@ export class TriminoGame {
   }
 
   canDraw(playerId: string): boolean {
-    return this.isTurnOf(playerId) && this.openingTileId === null && this.pool.length > 0 && this.drawsThisTurn < SCORE.maxDrawsPerTurn;
+    return this.isTurnOf(playerId) && this.board.size > 0 && this.pool.length > 0 && this.drawsThisTurn < SCORE.maxDrawsPerTurn;
   }
 
   canPass(playerId: string): boolean {
-    return this.isTurnOf(playerId) && this.openingTileId === null && (this.pool.length === 0 || this.drawsThisTurn >= SCORE.maxDrawsPerTurn);
+    return this.isTurnOf(playerId) && this.board.size > 0 && (this.pool.length === 0 || this.drawsThisTurn >= SCORE.maxDrawsPerTurn);
   }
 
   private isTurnOf(playerId: string): boolean {
@@ -165,7 +210,7 @@ export class TriminoGame {
     const p = this.current;
     const idx = p.hand.findIndex((t) => t.id === tileId);
     if (idx < 0) throw new RuleError("Essa peça não está na sua mão.");
-    if (this.openingTileId !== null && tileId !== this.openingTileId) throw new RuleError("A primeira jogada deve usar a peça de abertura.");
+    if (this.board.size === 0 && (r !== 0 || c !== 0)) throw new RuleError("A primeira peça vai no centro da mesa.");
     const tile = p.hand[idx];
     const move = this.fits(tile, r, c, ((rot % 3) + 3) % 3);
     if (!move) throw new RuleError("A peça não encaixa aí.");
@@ -174,13 +219,12 @@ export class TriminoGame {
     const bonuses: string[] = [];
     let points = tileSum(tile);
 
-    if (this.openingTileId !== null) {
+    if (this.board.size === 0) {
       if (isTriple(tile)) {
         const bonus = tile.v[0] === 0 ? SCORE.openingZeroTriple : SCORE.openingTriple;
         points += bonus;
         bonuses.push(`abertura com triplo +${bonus}`);
       }
-      this.openingTileId = null;
     } else {
       // Ponte: um canto encosta numa peça que não é vizinha por aresta.
       const neighborVerts = new Set<string>();

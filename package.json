@@ -15,7 +15,8 @@
     "start": "npm run start -w server",
     "test": "vitest run",
     "typecheck": "tsc -p shared && tsc -p server && tsc -p web",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "tsx scripts/smoke.ts",
+    "fixtures": "node scripts/capture-fixtures.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

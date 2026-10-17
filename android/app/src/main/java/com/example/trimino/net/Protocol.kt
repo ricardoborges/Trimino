@@ -18,7 +18,11 @@ val ProtocolJson = Json {
 
 @Serializable data class Tile(val id: Int, val v: List<Int>)
 
-@Serializable data class Move(val tileId: Int, val r: Int, val c: Int, val rot: Int, val vals: List<Int>)
+@Serializable data class Cell(val r: Int, val c: Int)
+
+@Serializable data class LotPick(val playerId: String, val slot: Int, val tile: Tile)
+
+@Serializable data class Lottery(val slots: Int, val picks: List<LotPick>, val winnerId: String? = null)
 
 @Serializable data class BoardCell(val r: Int, val c: Int, val vals: List<Int>, val tileId: Int, val by: String)
 
@@ -36,19 +40,26 @@ data class PlayerInfo(
 @Serializable data class RoundSummary(val winnerId: String? = null, val reason: String, val points: Int)
 
 @Serializable
-data class You(val id: String, val hand: List<Tile>, val validMoves: List<Move>, val canDraw: Boolean, val canPass: Boolean)
+data class You(
+  val id: String,
+  val hand: List<Tile>,
+  /** Células livres onde se pode TENTAR jogar (sem indicar se a peça encaixa). */
+  val frontier: List<Cell>,
+  val canDraw: Boolean,
+  val canPass: Boolean,
+)
 
 @Serializable
 data class GameState(
   val room: String,
-  val phase: String, // lobby | playing | roundOver | gameOver
+  val phase: String, // lobby | lottery | playing | roundOver | gameOver
   val round: Int,
   val targetScore: Int,
   val players: List<PlayerInfo>,
   val turnPlayerId: String? = null,
   val poolCount: Int,
   val board: List<BoardCell>,
-  val openingTileId: Int? = null,
+  val lottery: Lottery? = null,
   val log: List<String>,
   val roundSummary: RoundSummary? = null,
   val you: You,
@@ -73,6 +84,8 @@ sealed interface ClientMessage {
   @Serializable @SerialName("join") data class Join(val room: String, val name: String, val clientId: String) : ClientMessage
 
   @Serializable @SerialName("start") data object Start : ClientMessage
+
+  @Serializable @SerialName("pickLot") data class PickLot(val slot: Int) : ClientMessage
 
   @Serializable @SerialName("nextRound") data object NextRound : ClientMessage
 

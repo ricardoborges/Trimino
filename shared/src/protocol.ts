@@ -3,15 +3,24 @@
 
 import type { Tile, Values } from "./tiles.ts";
 
-export type Phase = "lobby" | "playing" | "roundOver" | "gameOver";
+export type Phase = "lobby" | "lottery" | "playing" | "roundOver" | "gameOver";
 
+/** Jogada válida (uso interno do servidor; não é enviada aos clientes para não dar dicas). */
 export interface Move {
   tileId: number;
   r: number;
   c: number;
   rot: number;
-  /** Valores resultantes nos vértices da célula (sentido horário), prontos para desenhar. */
+  /** Valores resultantes nos vértices da célula (sentido horário). */
   vals: Values;
+}
+
+export interface Lottery {
+  /** Quantas pedras viradas para baixo existem para escolher. */
+  slots: number;
+  picks: { playerId: string; slot: number; tile: Tile }[];
+  /** Definido quando todos já tiraram; a rodada começa alguns segundos depois. */
+  winnerId: string | null;
 }
 
 export interface BoardCell {
@@ -47,14 +56,17 @@ export interface GameState {
   turnPlayerId: string | null;
   poolCount: number;
   board: BoardCell[];
-  /** Peça obrigatória para a primeira jogada da rodada (null depois dela). */
-  openingTileId: number | null;
+  lottery: Lottery | null;
   log: string[];
   roundSummary: RoundSummary | null;
   you: {
     id: string;
     hand: Tile[];
-    validMoves: Move[];
+    /**
+     * Células livres encostadas (por aresta) em alguma peça — onde se pode TENTAR jogar.
+     * Com o tabuleiro vazio, só a origem. Não indica se a peça encaixa.
+     */
+    frontier: { r: number; c: number }[];
     canDraw: boolean;
     canPass: boolean;
   };
@@ -73,6 +85,7 @@ export type SignalData =
 export type ClientMessage =
   | { t: "join"; room: string; name: string; clientId: string }
   | { t: "start" }
+  | { t: "pickLot"; slot: number }
   | { t: "nextRound" }
   | { t: "place"; tileId: number; r: number; c: number; rot: number }
   | { t: "draw" }

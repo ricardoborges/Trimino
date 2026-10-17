@@ -43,3 +43,17 @@ export const SQRT3_2 = Math.sqrt(3) / 2;
 export function vertexToPixel([x, y]: Vertex, size: number): [number, number] {
   return [(x * size) / 2, y * size * SQRT3_2];
 }
+
+/** Célula que contém o ponto (px, py) em pixels, para uma aresta de tamanho `size`. */
+export function cellAt(px: number, py: number, size: number): [number, number] {
+  const r = Math.floor(py / (size * SQRT3_2));
+  const approx = Math.floor(px / (size / 2));
+  for (let c = approx - 2; c <= approx + 1; c++) {
+    const [a, b, d] = cellVertices(r, c).map((v) => vertexToPixel(v, size));
+    const s1 = (px - b[0]) * (a[1] - b[1]) - (a[0] - b[0]) * (py - b[1]);
+    const s2 = (px - d[0]) * (b[1] - d[1]) - (b[0] - d[0]) * (py - d[1]);
+    const s3 = (px - a[0]) * (d[1] - a[1]) - (d[0] - a[0]) * (py - a[1]);
+    if (!((s1 < 0 || s2 < 0 || s3 < 0) && (s1 > 0 || s2 > 0 || s3 > 0))) return [r, c];
+  }
+  return [r, approx];
+}

@@ -182,10 +182,9 @@ private fun BoardArea(vm: GameViewModel, s: GameState?, modifier: Modifier) {
     val ghosts =
       if (!myTurn || vm.selectedTile == null) emptyList()
       else {
-        val pm = vm.previewMove()
-        vm.movesFor(vm.selectedTile).distinctBy { it.r to it.c }.map { m ->
-          GhostCell(m.r, m.c, if (pm != null && pm.r == m.r && pm.c == m.c) pm.vals else null)
-        }
+        val p = vm.preview
+        val vals = vm.previewVals()
+        s.you.frontier.map { f -> GhostCell(f.r, f.c, if (p != null && p.r == f.r && p.c == f.c) vals else null) }
       }
     BoardCanvas(s.board, ghosts, colorOf, fitKey = s.round to s.board.isEmpty(), onTap = vm::tapCell, modifier = Modifier.fillMaxSize())
 
@@ -193,10 +192,9 @@ private fun BoardArea(vm: GameViewModel, s: GameState?, modifier: Modifier) {
     val banner =
       when {
         s.phase != "playing" -> null
-        myTurn && s.openingTileId != null -> "Sua vez! Coloque a peça de abertura."
-        myTurn && vm.selectedTile == null -> "Sua vez! Escolha uma peça."
+        myTurn && vm.selectedTile == null -> if (s.board.isEmpty()) "Sua vez! Abra com a peça que quiser." else "Sua vez! Escolha uma peça."
         myTurn && vm.preview != null -> "Toque de novo para girar, depois Jogar."
-        myTurn -> "Toque num espaço destacado."
+        myTurn -> "Toque num espaço livre."
         else -> "Vez de $turnName"
       }
     banner?.let {
@@ -216,7 +214,67 @@ private fun BoardArea(vm: GameViewModel, s: GameState?, modifier: Modifier) {
       fontSize = 12.sp,
       modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp).background(Color(0x40000000), CircleShape).padding(horizontal = 10.dp, vertical = 4.dp),
     )
-    if (s.phase != "playing") PhaseCard(vm, s, Modifier.align(Alignment.Center))
+    if (s.phase == "lottery" && s.lottery != null) LotteryCard(vm, s, Modifier.align(Alignment.Center))
+    else if (s.phase != "playing") PhaseCard(vm, s, Modifier.align(Alignment.Center))
+  }
+}
+
+/** Sorteio: cada jogador escolhe uma pedra virada para baixo; a maior começa. */
+@Composable
+private fun LotteryCard(vm: GameViewModel, s: GameState, modifier: Modifier) {
+  val lot = s.lottery ?: return
+  val mine = lot.picks.any { it.playerId == s.you.id }
+  val seated = s.players.any { it.id == s.you.id && !it.spectator }
+  val nameOf = { id: String -> s.players.firstOrNull { it.id == id }?.name ?: "?" }
+  val measurer = rememberTextMeasurer()
+  Column(
+    modifier.padding(16.dp).background(Panel, RoundedCornerShape(20.dp)).border(1.dp, FeltLine, RoundedCornerShape(20.dp)).padding(20.dp),
+    verticalArrangement = Arrangement.spacedBy(10.dp),
+  ) {
+    Text("Sorteio", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+    Text(
+      when {
+        lot.winnerId != null -> "${nameOf(lot.winnerId)} tirou a maior pedra e começa!"
+        mine || !seated -> "Aguardando os outros jogadores…"
+        else -> "Escolha uma pedra. Quem tirar a maior começa."
+      },
+      color = Muted,
+    )
+    (0 until lot.slots).chunked(4).forEach { row ->
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        row.forEach { slot ->
+          val pick = lot.picks.firstOrNull { it.slot == slot }
+          val seat = pick?.let { p -> s.players.indexOfFirst { it.id == p.playerId } } ?: -1
+          val ring = when {
+            pick != null && pick.playerId == lot.winnerId -> Accent
+            seat >= 0 -> PlayerColors[seat % 4]
+            else -> FeltLine
+          }
+          val canPick = pick == null && !mine && seated && lot.winnerId == null
+          Column(
+            Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(if (pick != null) Panel2 else Color(0xFF235C46))
+              .border(2.dp, ring, RoundedCornerShape(12.dp)).clickable(enabled = canPick) { vm.pickLot(slot) }.padding(6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+          ) {
+            Canvas(Modifier.fillMaxWidth().aspectRatio(1f / 0.866f)) {
+              val k = size.width / EDGE
+              scale(k, k, androidx.compose.ui.geometry.Offset.Zero) {
+                val pts = listOf(EDGE / 2 to 0f, EDGE to EDGE * 0.866f, 0f to EDGE * 0.866f)
+                if (pick != null) drawTriangle(measurer, pts, pick.tile.v, Color(0xFFD9CCAB))
+                else {
+                  val path = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(pts[0].first, pts[0].second); lineTo(pts[1].first, pts[1].second); lineTo(pts[2].first, pts[2].second); close()
+                  }
+                  drawPath(path, Color(0xFF0F3326))
+                }
+              }
+            }
+            Text(pick?.let { nameOf(it.playerId) } ?: " ", color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+          }
+        }
+        repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+      }
+    }
   }
 }
 
@@ -256,20 +314,19 @@ private fun PhaseCard(vm: GameViewModel, s: GameState, modifier: Modifier) {
 private fun Dock(vm: GameViewModel, s: GameState?) {
   if (s == null) return
   val myTurn = vm.isMyTurn
-  val playable = remember(s) { s.you.validMoves.map { it.tileId }.toSet() }
   Column(Modifier.fillMaxWidth().background(Panel).padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
       items(s.you.hand, key = { it.id }) { t ->
-        HandTile(t, selected = t.id == vm.selectedTile, dim = myTurn && t.id !in playable) { vm.selectTile(t.id) }
+        HandTile(t, selected = t.id == vm.selectedTile) { vm.selectTile(t.id) }
       }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
       val secondary = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
       val border = BorderStroke(1.dp, FeltLine)
-      OutlinedButton(vm::rotate, enabled = vm.previewMoves().size > 1, colors = secondary, border = border, modifier = Modifier.weight(1f)) { Text("⟳ Girar") }
+      OutlinedButton(vm::rotate, enabled = vm.preview != null, colors = secondary, border = border, modifier = Modifier.weight(1f)) { Text("⟳ Girar") }
       Button(
         vm::play,
-        enabled = vm.previewMove() != null,
+        enabled = vm.preview != null,
         colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color(0xFF2B1D00)),
         modifier = Modifier.weight(1f),
       ) {
@@ -282,7 +339,7 @@ private fun Dock(vm: GameViewModel, s: GameState?) {
 }
 
 @Composable
-private fun HandTile(tile: Tile, selected: Boolean, dim: Boolean, onClick: () -> Unit) {
+private fun HandTile(tile: Tile, selected: Boolean, onClick: () -> Unit) {
   val measurer = rememberTextMeasurer()
   Box(
     Modifier.width(60.dp).clip(RoundedCornerShape(10.dp))
@@ -295,7 +352,6 @@ private fun HandTile(tile: Tile, selected: Boolean, dim: Boolean, onClick: () ->
       scale(k, k, androidx.compose.ui.geometry.Offset.Zero) {
         drawTriangle(measurer, listOf(EDGE / 2 to 0f, EDGE to EDGE * 0.866f, 0f to EDGE * 0.866f), tile.v, Color(0xFFD9CCAB))
       }
-      if (dim) drawRect(Panel.copy(alpha = 0.6f))
     }
   }
 }

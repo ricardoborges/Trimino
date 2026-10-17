@@ -1,6 +1,7 @@
 import "./style.css";
-import type { GameState, Move, ServerMessage } from "@trimino/shared";
-import { BoardView, handTileSvg, type Ghost } from "./board.ts";
+import { rotated, type GameState, type ServerMessage } from "@trimino/shared";
+import { BoardView, handTileSvg, type Board, type Ghost } from "./board.ts";
+import { Board3D, webglAvailable } from "./board3d/Board3D.ts";
 import { Connection } from "./net.ts";
 import { Mesh } from "./rtc.ts";
 
@@ -46,13 +47,18 @@ form.addEventListener("submit", async (e) => {
 
 let state: GameState | null = null;
 let selectedTile: number | null = null;
-let preview: { r: number; c: number; i: number } | null = null;
+let preview: { r: number; c: number; rot: number } | null = null;
 let lastBoardSize = -1;
 let lastRound = -1;
 let seenLog: string[] = [];
 
 async function start(name: string, room: string, withMedia: boolean): Promise<void> {
-  const board = new BoardView($("table"));
+  const board: Board = webglAvailable() ? new Board3D($("table")) : new BoardView($("table"));
+  $("view").hidden = !board.toggleView;
+  $("view").onclick = () => {
+    const top = board.toggleView?.();
+    $("view").textContent = top ? "3D" : "Topo";
+  };
   const videos = new Map<string, HTMLElement>();
 
   const mesh = new Mesh(
@@ -63,6 +69,8 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
     await mesh.startLocal();
     if (!mesh.local) toast("Não foi possível acessar câmera/microfone.");
   }
+
+  if (import.meta.env.DEV) Object.assign(window, { __trimino: { board, get state() { return state; } } });
 
   let myId = "";
   const conn = new Connection({ t: "join", room, name, clientId: clientId() }, onMessage, (online) => {
@@ -150,26 +158,23 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
 
   // ---------- ações ----------
 
-  const movesFor = (tileId: number | null): Move[] => (state && tileId !== null ? state.you.validMoves.filter((m) => m.tileId === tileId) : []);
-  const previewMoves = (): Move[] => (preview ? movesFor(selectedTile).filter((m) => m.r === preview!.r && m.c === preview!.c) : []);
+  // Sem dicas: qualquer espaço livre encostado no jogo pode ser tentado; o servidor decide se encaixa.
+  const isFrontier = (r: number, c: number) => !!state?.you.frontier.some((f) => f.r === r && f.c === c);
 
   board.onCellClick = (r, c) => {
-    if (preview && preview.r === r && preview.c === c) preview.i++;
-    else preview = { r, c, i: 0 };
+    if (selectedTile === null || !isFrontier(r, c)) return;
+    if (preview && preview.r === r && preview.c === c) preview.rot = (preview.rot + 1) % 3;
+    else preview = { r, c, rot: 0 };
     render();
   };
 
   const play = () => {
-    const opts = previewMoves();
-    if (!opts.length) return;
-    const m = opts[preview!.i % opts.length];
-    conn.send({ t: "place", tileId: m.tileId, r: m.r, c: m.c, rot: m.rot });
-    preview = null;
-    selectedTile = null;
+    if (!preview || selectedTile === null) return;
+    conn.send({ t: "place", tileId: selectedTile, r: preview.r, c: preview.c, rot: preview.rot });
   };
   const rotate = () => {
     if (preview) {
-      preview.i++;
+      preview.rot = (preview.rot + 1) % 3;
       render();
     }
   };
@@ -204,23 +209,16 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
     const colorOf = (pid: string) => PLAYER_COLORS[Math.max(0, s.players.findIndex((p) => p.id === pid)) % 4];
 
     if (selectedTile !== null && !s.you.hand.some((t) => t.id === selectedTile)) selectedTile = null;
-    if (myTurn && s.openingTileId !== null) selectedTile = s.openingTileId;
-    if (!myTurn) preview = null;
-    if (preview && !previewMoves().length) preview = null;
+    if (!myTurn || selectedTile === null || (preview && !isFrontier(preview.r, preview.c))) preview = null;
 
     // tabuleiro
     const ghosts: Ghost[] = [];
-    if (myTurn && selectedTile !== null) {
-      const seen = new Set<string>();
-      for (const m of movesFor(selectedTile)) {
-        const k = `${m.r},${m.c}`;
-        if (seen.has(k)) continue;
-        seen.add(k);
-        const active = preview?.r === m.r && preview?.c === m.c;
-        const opts = active ? previewMoves() : [];
-        ghosts.push({ r: m.r, c: m.c, vals: active ? opts[preview!.i % opts.length].vals : null, active });
+    const tile = s.you.hand.find((t) => t.id === selectedTile);
+    if (myTurn && tile)
+      for (const f of s.you.frontier) {
+        const active = preview?.r === f.r && preview?.c === f.c;
+        ghosts.push({ r: f.r, c: f.c, vals: active ? rotated(tile.v, preview!.rot) : null, active });
       }
-    }
     const last = s.board.at(-1);
     board.render(s.board, colorOf, ghosts, last ? `${last.r},${last.c}` : null);
     if (s.round !== lastRound || (s.board.length > 0) !== (lastBoardSize > 0)) board.fit(s.board);
@@ -246,17 +244,16 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
     const turnName = s.players.find((p) => p.id === s.turnPlayerId)?.name;
     $("banner").textContent =
       s.phase !== "playing" ? "" :
-      myTurn ? (s.openingTileId !== null ? "Sua vez! Coloque a peça de abertura." : selectedTile === null ? "Sua vez! Escolha uma peça." : preview ? "Toque de novo para girar, depois Jogar." : "Toque num espaço destacado.") :
+      myTurn ? (selectedTile === null ? (s.board.length ? "Sua vez! Escolha uma peça." : "Sua vez! Abra com a peça que quiser.") : preview ? "Toque de novo para girar, depois Jogar." : "Toque num espaço livre.") :
       `Vez de ${turnName}`;
     $("banner").classList.toggle("mine", myTurn);
     renderOverlay(s, !!me?.isHost);
 
     // mão
-    const playable = new Set(s.you.validMoves.map((m) => m.tileId));
     $("hand").replaceChildren(
       ...s.you.hand.map((t) => {
         const b = document.createElement("button");
-        b.className = `hand-tile${t.id === selectedTile ? " selected" : ""}${myTurn && !playable.has(t.id) ? " dim" : ""}`;
+        b.className = `hand-tile${t.id === selectedTile ? " selected" : ""}`;
         b.append(handTileSvg(t.v));
         b.onclick = () => {
           selectedTile = selectedTile === t.id ? null : t.id;
@@ -268,7 +265,7 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
     );
 
     $("play").toggleAttribute("disabled", !preview);
-    $("rotate").toggleAttribute("disabled", previewMoves().length < 2);
+    $("rotate").toggleAttribute("disabled", !preview);
     $("draw").toggleAttribute("disabled", !s.you.canDraw);
     $("pass").toggleAttribute("disabled", !s.you.canPass);
 
@@ -297,6 +294,11 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
     const btn = document.createElement("button");
     btn.className = "primary";
     const seated = s.players.filter((x) => x.connected).length;
+    if (s.phase === "lottery" && s.lottery) {
+      renderLottery(box, h, p, s);
+      ov.append(box);
+      return;
+    }
     if (s.phase === "lobby") {
       h.textContent = "Esperando jogadores";
       p.textContent = `${seated} na sala. Compartilhe o link: ${location.href}`;
@@ -325,10 +327,49 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
     ov.append(box);
   }
 
+  function renderLottery(box: HTMLElement, h: HTMLElement, p: HTMLElement, s: GameState): void {
+    const lot = s.lottery!;
+    const mine = lot.picks.find((x) => x.playerId === s.you.id);
+    const seated = s.players.some((x) => x.id === s.you.id && !x.spectator);
+    const nameOf = (id: string) => s.players.find((x) => x.id === id)?.name ?? "?";
+    const winner = lot.winnerId ? nameOf(lot.winnerId) : null;
+    h.textContent = "Sorteio";
+    p.textContent = winner
+      ? `${winner} tirou a maior pedra e começa!`
+      : mine || !seated
+        ? "Aguardando os outros jogadores…"
+        : "Escolha uma pedra. Quem tirar a maior começa.";
+    const grid = document.createElement("div");
+    grid.className = "lots";
+    for (let i = 0; i < lot.slots; i++) {
+      const pick = lot.picks.find((x) => x.slot === i);
+      const b = document.createElement("button");
+      b.className = `lot${pick ? " revealed" : ""}${pick && pick.playerId === lot.winnerId ? " winner" : ""}`;
+      if (pick) {
+        b.disabled = true;
+        b.append(handTileSvg(pick.tile.v));
+        const who = document.createElement("span");
+        who.textContent = nameOf(pick.playerId);
+        b.append(who);
+        b.style.setProperty("--owner", colorOfSeat(s, pick.playerId));
+      } else {
+        b.disabled = !!mine || !seated || !!winner;
+        b.onclick = () => conn.send({ t: "pickLot", slot: i });
+      }
+      grid.append(b);
+    }
+    box.classList.add("wide");
+    box.append(h, p, grid);
+  }
+
   window.addEventListener("beforeunload", () => {
     mesh.closeAll();
     conn.close();
   });
+}
+
+function colorOfSeat(s: GameState, playerId: string): string {
+  return PLAYER_COLORS[Math.max(0, s.players.findIndex((p) => p.id === playerId)) % 4];
 }
 
 function addLog(text: string, cls = ""): void {

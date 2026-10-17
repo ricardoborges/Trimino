@@ -10,6 +10,8 @@ export interface Member {
   joinedAt: number;
 }
 
+const LOTTERY_REVEAL_MS = 3500;
+
 const newId = () => randomBytes(4).toString("hex");
 
 export class Room {
@@ -65,6 +67,19 @@ export class Room {
           const seats = [...this.members.values()].filter((m) => m.ws).slice(0, MAX_PLAYERS);
           if (seats.length < MIN_PLAYERS) throw new RuleError(`São necessários pelo menos ${MIN_PLAYERS} jogadores.`);
           this.game = new TriminoGame(seats.map((m) => ({ id: m.id, name: m.name })));
+          break;
+        }
+        case "pickLot": {
+          const game = this.requireGame();
+          game.pickLot(member.id, msg.slot);
+          // Deixa todos verem as pedras reveladas antes de dar as cartas.
+          if (game.lotteryDone)
+            setTimeout(() => {
+              if (this.game === game && game.lotteryDone) {
+                game.beginFirstRound();
+                this.broadcastState();
+              }
+            }, LOTTERY_REVEAL_MS);
           break;
         }
         case "nextRound":
@@ -139,13 +154,16 @@ export class Room {
       turnPlayerId: g && g.phase === "playing" ? g.current.id : null,
       poolCount: g?.pool.length ?? 0,
       board: g ? [...g.board.values()] : [],
-      openingTileId: g?.openingTileId ?? null,
+      lottery:
+        g && g.phase === "lottery"
+          ? { slots: g.lotteryPool.length, picks: g.lotteryPicks, winnerId: g.lotteryWinnerId }
+          : null,
       log: g?.log.slice(-20) ?? [],
       roundSummary: g?.roundSummary ?? null,
       you: {
         id: viewer.id,
         hand: me?.hand ?? [],
-        validMoves: g ? g.validMoves(viewer.id) : [],
+        frontier: g && g.phase === "playing" ? g.frontier().map(([r, c]) => ({ r, c })) : [],
         canDraw: g ? g.canDraw(viewer.id) : false,
         canPass: g ? g.canPass(viewer.id) : false,
       },

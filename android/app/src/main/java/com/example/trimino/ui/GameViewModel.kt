@@ -13,7 +13,6 @@ import androidx.lifecycle.viewModelScope
 import com.example.trimino.net.ClientMessage
 import com.example.trimino.net.GameSocket
 import com.example.trimino.net.GameState
-import com.example.trimino.net.Move
 import com.example.trimino.net.ServerMessage
 import com.example.trimino.rtc.Mesh
 import java.util.UUID
@@ -21,7 +20,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.webrtc.VideoTrack
 
-data class Preview(val r: Int, val c: Int, val index: Int)
+data class Preview(val r: Int, val c: Int, val rot: Int)
+
+/** Valores da peça nos vértices da célula para a rotação 0..2 (igual a shared/tiles.ts). */
+fun rotated(v: List<Int>, rot: Int): List<Int> = List(3) { v[(it + rot) % 3] }
 
 class GameViewModel(app: Application) : AndroidViewModel(app) {
   private val prefs = app.getSharedPreferences("trimino", Context.MODE_PRIVATE)
@@ -104,41 +106,46 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     state = s
     val myTurn = isMyTurn
     if (selectedTile != null && s.you.hand.none { it.id == selectedTile }) selectedTile = null
-    if (myTurn && s.openingTileId != null) selectedTile = s.openingTileId
-    if (!myTurn || previewMoves().isEmpty()) preview = null
+    val p = preview
+    if (!myTurn || selectedTile == null || (p != null && !isFrontier(p.r, p.c))) preview = null
   }
 
   val isMyTurn: Boolean
     get() = state?.let { it.phase == "playing" && it.turnPlayerId == it.you.id } ?: false
 
-  fun movesFor(tileId: Int?): List<Move> = state?.you?.validMoves?.filter { it.tileId == tileId } ?: emptyList()
+  // Sem dicas: qualquer espaço livre encostado no jogo pode ser tentado; o servidor decide se encaixa.
+  fun isFrontier(r: Int, c: Int): Boolean = state?.you?.frontier?.any { it.r == r && it.c == c } == true
 
-  fun previewMoves(): List<Move> = preview?.let { p -> movesFor(selectedTile).filter { it.r == p.r && it.c == p.c } } ?: emptyList()
-
-  fun previewMove(): Move? = previewMoves().let { opts -> preview?.let { if (opts.isEmpty()) null else opts[it.index % opts.size] } }
+  /** Números da prévia nos vértices da célula, ou null sem prévia. */
+  fun previewVals(): List<Int>? {
+    val p = preview ?: return null
+    val tile = state?.you?.hand?.firstOrNull { it.id == selectedTile } ?: return null
+    return rotated(tile.v, p.rot)
+  }
 
   fun selectTile(id: Int) {
-    if (state?.openingTileId != null && isMyTurn) return
     selectedTile = if (selectedTile == id) null else id
     preview = null
   }
 
   fun tapCell(r: Int, c: Int) {
-    if (movesFor(selectedTile).none { it.r == r && it.c == c }) return
+    if (selectedTile == null || !isMyTurn || !isFrontier(r, c)) return
     val p = preview
-    preview = if (p != null && p.r == r && p.c == c) p.copy(index = p.index + 1) else Preview(r, c, 0)
+    preview = if (p != null && p.r == r && p.c == c) p.copy(rot = (p.rot + 1) % 3) else Preview(r, c, 0)
   }
 
   fun rotate() {
-    preview = preview?.let { it.copy(index = it.index + 1) }
+    preview = preview?.let { it.copy(rot = (it.rot + 1) % 3) }
   }
 
+  /** Envia a jogada; se não encaixar, o servidor responde com erro e a prévia continua para girar. */
   fun play() {
-    val m = previewMove() ?: return
-    socket?.send(ClientMessage.Place(m.tileId, m.r, m.c, m.rot))
-    preview = null
-    selectedTile = null
+    val p = preview ?: return
+    val tile = selectedTile ?: return
+    socket?.send(ClientMessage.Place(tile, p.r, p.c, p.rot))
   }
+
+  fun pickLot(slot: Int) = socket?.send(ClientMessage.PickLot(slot))
 
   fun draw() = socket?.send(ClientMessage.Draw)
 

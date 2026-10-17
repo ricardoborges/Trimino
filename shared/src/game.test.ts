@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { TriminoGame, SCORE } from "./game.ts";
-import { cellVertices, cellsAroundVertex, edgeNeighbors, vertexKey } from "./geometry.ts";
+import { LOTTERY_SLOTS, TriminoGame, SCORE, lotRank } from "./game.ts";
+import { cellAt, cellVertices, cellsAroundVertex, edgeNeighbors, vertexKey, vertexToPixel } from "./geometry.ts";
 import { fullSet } from "./tiles.ts";
 
 /** RNG determinístico (mulberry32). */
@@ -14,6 +14,19 @@ function seeded(seed: number) {
 }
 
 const twoPlayers = [{ id: "a", name: "Ana" }, { id: "b", name: "Bia" }];
+
+/** Cria o jogo, faz o sorteio (cada um pega a pedra i) e dá as cartas. */
+function started(seed: number, target = 400): TriminoGame {
+  const g = new TriminoGame(twoPlayers, target, seeded(seed));
+  g.players.forEach((p, i) => g.pickLot(p.id, i));
+  g.beginFirstRound();
+  return g;
+}
+
+/** Primeira jogada: qualquer peça da mão na origem. */
+function open(g: TriminoGame) {
+  g.place(g.current.id, g.current.hand[0].id, 0, 0, 0);
+}
 
 describe("geometria", () => {
   it("vizinhos por aresta compartilham exatamente dois vértices", () => {
@@ -33,6 +46,17 @@ describe("geometria", () => {
   });
 });
 
+describe("cellAt", () => {
+  it("o centro de cada célula aponta para ela mesma", () => {
+    for (const [r, c] of [[0, 0], [0, 1], [2, -3], [-1, 4], [-3, -3]]) {
+      const pts = cellVertices(r, c).map((v) => vertexToPixel(v, 1));
+      const cx = (pts[0][0] + pts[1][0] + pts[2][0]) / 3;
+      const cy = (pts[0][1] + pts[1][1] + pts[2][1]) / 3;
+      expect(cellAt(cx, cy, 1)).toEqual([r, c]);
+    }
+  });
+});
+
 describe("peças", () => {
   it("o jogo tem 56 peças distintas", () => {
     const set = fullSet();
@@ -42,16 +66,46 @@ describe("peças", () => {
 });
 
 describe("TriminoGame", () => {
-  it("distribui 9 peças para 2 jogadores e define a abertura", () => {
+  it("sorteio: quem tira a maior pedra começa", () => {
     const g = new TriminoGame(twoPlayers, 400, seeded(1));
+    expect(g.phase).toBe("lottery");
+    expect(g.lotteryPool).toHaveLength(LOTTERY_SLOTS);
+    expect(() => g.beginFirstRound()).toThrow();
+    g.pickLot("a", 3);
+    expect(() => g.pickLot("a", 4)).toThrow(); // só uma pedra por jogador
+    expect(() => g.pickLot("b", 3)).toThrow(); // pedra já escolhida
+    g.pickLot("b", 7);
+    const winner = lotRank(g.lotteryPool[3]) > lotRank(g.lotteryPool[7]) ? "a" : "b";
+    expect(g.lotteryWinnerId).toBe(winner);
+    g.beginFirstRound();
+    expect(g.phase).toBe("playing");
+    expect(g.current.id).toBe(winner);
     expect(g.players.every((p) => p.hand.length === 9)).toBe(true);
     expect(g.pool).toHaveLength(56 - 18);
-    expect(g.current.hand.some((t) => t.id === g.openingTileId)).toBe(true);
-    expect(g.canDraw(g.current.id)).toBe(false);
+  });
+
+  it("abre com qualquer peça, só na origem, sem comprar antes", () => {
+    const g = started(1);
+    const p = g.current;
+    expect(g.canDraw(p.id)).toBe(false);
+    const last = p.hand.at(-1)!;
+    expect(() => g.place(p.id, last.id, 2, 2, 0)).toThrow();
+    g.place(p.id, last.id, 0, 0, 1);
+    expect(g.board.size).toBe(1);
+  });
+
+  it("as rodadas seguintes começam com o próximo jogador", () => {
+    const g = started(11, 10_000);
+    const first = g.current.id;
+    g.current.hand = [g.current.hand[0]];
+    open(g);
+    expect(g.phase).toBe("roundOver");
+    g.startRound();
+    expect(g.current.id).not.toBe(first);
   });
 
   it("toda jogada válida é aceita e respeita os cantos", () => {
-    const g = new TriminoGame(twoPlayers, 10_000, seeded(7));
+    const g = started(7, 10_000);
     for (let step = 0; step < 200 && g.phase === "playing"; step++) {
       const id = g.current.id;
       const moves = g.validMoves(id);
@@ -73,9 +127,8 @@ describe("TriminoGame", () => {
   });
 
   it("rejeita peça que não encaixa", () => {
-    const g = new TriminoGame(twoPlayers, 400, seeded(3));
-    const m = g.validMoves(g.current.id)[0];
-    g.place(g.current.id, m.tileId, m.r, m.c, m.rot);
+    const g = started(3);
+    open(g);
     const p = g.current;
     const valid = new Set(g.validMoves(p.id).map((v) => `${v.tileId}/${v.r}/${v.c}/${v.rot}`));
     const bad = p.hand.flatMap((t) => [0, 1, 2].map((rot) => ({ t, rot }))).find(({ t, rot }) => !valid.has(`${t.id}/0/1/${rot}`));
@@ -84,9 +137,8 @@ describe("TriminoGame", () => {
   });
 
   it("comprar custa pontos e passar só depois de 3 compras", () => {
-    const g = new TriminoGame(twoPlayers, 400, seeded(5));
-    const m = g.validMoves(g.current.id)[0];
-    g.place(g.current.id, m.tileId, m.r, m.c, m.rot);
+    const g = started(5);
+    open(g);
     const p = g.current;
     const before = p.score;
     expect(g.canPass(p.id)).toBe(false);
@@ -98,9 +150,8 @@ describe("TriminoGame", () => {
   });
 
   it("dá bônus de hexágono ao fechar seis peças ao redor de um vértice", () => {
-    const g = new TriminoGame(twoPlayers, 10_000, seeded(9));
+    const g = started(9, 10_000);
     // Monta o tabuleiro manualmente com cinco peças 0-0-0 ao redor de um vértice.
-    g.openingTileId = null;
     const [cx, cy] = cellVertices(0, 0)[2];
     const ring = cellsAroundVertex(cx, cy);
     const zero = { id: 0, v: [0, 0, 0] as [number, number, number] };
@@ -116,11 +167,10 @@ describe("TriminoGame", () => {
   });
 
   it("esvaziar a mão encerra a rodada com bônus", () => {
-    const g = new TriminoGame(twoPlayers, 10_000, seeded(11));
+    const g = started(11, 10_000);
     const p = g.current;
-    p.hand = p.hand.filter((t) => t.id === g.openingTileId);
-    const m = g.validMoves(p.id)[0];
-    g.place(p.id, m.tileId, m.r, m.c, m.rot);
+    p.hand = [p.hand[0]];
+    open(g);
     expect(g.phase).toBe("roundOver");
     expect(g.roundSummary?.winnerId).toBe(p.id);
     expect(g.roundSummary!.points).toBeGreaterThanOrEqual(SCORE.emptyHand);

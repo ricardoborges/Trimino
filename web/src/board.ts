@@ -36,6 +36,15 @@ export function handTileSvg(vals: Values): SVGSVGElement {
   return svg;
 }
 
+/** Implementado pelo tabuleiro 2D (SVG, fallback) e pelo 3D (WebGL). */
+export interface Board {
+  onCellClick: (r: number, c: number) => void;
+  render(board: BoardCell[], colorOf: (playerId: string) => string, ghosts: Ghost[], lastTile: string | null): void;
+  fit(board: { r: number; c: number }[]): void;
+  /** Alterna câmera inclinada / vista de cima; devolve true se ficou de cima. */
+  toggleView?(): boolean;
+}
+
 export interface Ghost {
   r: number;
   c: number;
@@ -43,7 +52,7 @@ export interface Ghost {
   active: boolean;
 }
 
-export class BoardView {
+export class BoardView implements Board {
   readonly svg: SVGSVGElement;
   private world: SVGGElement;
   private cam = { x: 0, y: 0, k: 1 };
