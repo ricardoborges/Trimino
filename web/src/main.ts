@@ -5,6 +5,7 @@ import { BoardView, handTileSvg, type Board, type Ghost } from "./board.ts";
 import { Board3D, webglAvailable } from "./board3d/Board3D.ts";
 import { tilePhoto } from "./board3d/tilePhotos.ts";
 import { Confetti } from "./confetti.ts";
+import { enableHandDrag } from "./handDrag.ts";
 import { Connection } from "./net.ts";
 import { Mesh } from "./rtc.ts";
 
@@ -60,7 +61,10 @@ let lastBoardSize = -1;
 let lastRound = -1;
 let seenLog: string[] = [];
 /** Última comemoração já mostrada (null até o primeiro estado, para não repetir ao entrar/recarregar). */
-let seenCelebration: number | null = null; // entradas serializadas, para comparar com o próximo estado
+let seenCelebration: number | null = null;
+/** Ordem das pedras na mão escolhida pelo jogador (ids); pedras novas entram no fim. */
+let handOrder: number[] = [];
+let draggingHand = false; // entradas serializadas, para comparar com o próximo estado
 
 async function start(name: string, room: string, withMedia: boolean): Promise<void> {
   const board: Board = webglAvailable() ? new Board3D($("table")) : new BoardView($("table"));
@@ -81,6 +85,22 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
   }
 
   const confetti = new Confetti($("table"));
+
+  // Reorganizar a mão: só fora da vez do jogador; a ordem fica salva nesta aba.
+  const orderKey = `trimino.handOrder.${room}`;
+  try { handOrder = JSON.parse(sessionStorage.getItem(orderKey) ?? "[]"); } catch { handOrder = []; }
+  const handDrag = enableHandDrag($("hand"), {
+    canDrag: () => !!state && !(state.phase === "playing" && state.turnPlayerId === state.you.id),
+    onReorder: (ids) => {
+      handOrder = ids;
+      try { sessionStorage.setItem(orderKey, JSON.stringify(ids)); } catch { /* sem storage */ }
+      render();
+    },
+    onDragChange: (active) => {
+      draggingHand = active;
+      if (!active) render();
+    },
+  });
 
   if (import.meta.env.DEV) Object.assign(window, { __trimino: { board, confetti, get state() { return state; } } });
 
@@ -308,20 +328,27 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
     $("banner").classList.toggle("mine", myTurn);
     renderOverlay(s, !!me?.isHost);
 
-    // mão
-    $("hand").replaceChildren(
-      ...s.you.hand.map((t) => {
-        const b = document.createElement("button");
-        b.className = `hand-tile${t.id === selectedTile ? " selected" : ""}`;
-        b.append(tileVisual(t.v));
-        b.onclick = () => {
-          selectedTile = selectedTile === t.id ? null : t.id;
-          preview = null;
-          render();
-        };
-        return b;
-      }),
-    );
+    // mão (não redesenha no meio de um arrasto; render() é chamado de novo quando o jogador solta)
+    const pos = new Map(handOrder.map((id, i) => [id, i]));
+    const hand = [...s.you.hand].sort((a, b) => (pos.get(a.id) ?? 1e9) - (pos.get(b.id) ?? 1e9));
+    handOrder = hand.map((t) => t.id);
+    if (!draggingHand)
+      $("hand").replaceChildren(
+        ...hand.map((t) => {
+          const b = document.createElement("button");
+          b.className = `hand-tile${t.id === selectedTile ? " selected" : ""}${myTurn ? "" : " draggable"}`;
+          b.dataset.id = String(t.id);
+          b.title = myTurn ? "Escolher esta pedra" : "Arraste para reorganizar";
+          b.append(tileVisual(t.v));
+          b.onclick = () => {
+            if (handDrag.consumeClick()) return;
+            selectedTile = selectedTile === t.id ? null : t.id;
+            preview = null;
+            render();
+          };
+          return b;
+        }),
+      );
 
     $("play").toggleAttribute("disabled", !preview);
     $("rotate").toggleAttribute("disabled", !preview);
