@@ -1,6 +1,6 @@
 import "./style.css";
 import { rotated, type GameState, type LogEntry, type ServerMessage, type Values } from "@trimino/shared";
-import { DIGIT_COLORS } from "./board3d/textures.ts";
+import { VALUE_COLORS } from "./board3d/textures.ts";
 import { BoardView, handTileSvg, type Board, type Ghost } from "./board.ts";
 import { Board3D, webglAvailable } from "./board3d/Board3D.ts";
 import { tilePhoto } from "./board3d/tilePhotos.ts";
@@ -458,7 +458,7 @@ function addLog(e: LogEntry): void {
       if (i) tile.append("-");
       const d = document.createElement("span");
       d.textContent = String(n);
-      d.style.color = DIGIT_COLORS[n];
+      d.style.color = VALUE_COLORS[n];
       tile.append(d);
     });
     tile.append(">");

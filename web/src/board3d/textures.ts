@@ -2,8 +2,8 @@
 
 import * as THREE from "three";
 
-/** Cor de cada número, como nas peças clássicas. */
-export const DIGIT_COLORS = ["#2b2b2b", "#c0392b", "#1f5fae", "#1e8449", "#d35400", "#7d3c98"];
+/** Cor dos pontinhos de cada valor (0 não tem pontos). */
+export const VALUE_COLORS = ["#3a3a3a", "#d0342c", "#1f8a3a", "#1f5fae", "#7d3c98", "#e0a800"];
 
 function canvas(size: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const c = document.createElement("canvas");
@@ -53,31 +53,77 @@ export function feltTexture(): THREE.CanvasTexture {
   return t;
 }
 
+/** Tamanho (em unidades da mesa) do quadrado onde os pontinhos de um canto são desenhados. */
+export const PIP_AREA = 0.4;
+const PIP_SPACING = 0.084;
+const PIP_RADIUS = 0.034;
+
 /**
- * Número "gravado": sombra no canto superior esquerdo e brilho no inferior direito
- * dão a impressão de baixo-relevo quando a luz vem de cima.
+ * Posição dos pontinhos de cada valor, em múltiplos de PIP_SPACING. y negativo aponta para o canto:
+ * o arranjo começa estreito na ponta e alarga em direção ao centro, acompanhando a cunha do canto.
  */
-export function digitTexture(n: number): THREE.CanvasTexture {
-  const size = 128;
+const PIP_LAYOUT: [number, number][][] = [
+  [],
+  [[0, 0]],
+  [[-0.55, 0.1], [0.55, 0.1]],
+  [[0, -0.55], [-0.6, 0.45], [0.6, 0.45]],
+  [[0, -0.85], [-0.6, 0], [0.6, 0], [0, 0.85]],
+  [[0, -0.95], [-0.55, -0.1], [0.55, -0.1], [-1.05, 0.75], [1.05, 0.75]],
+];
+
+/** Pontinhos de um valor, levemente rebaixados na peça. O topo da textura aponta para o canto. */
+export function pipTexture(n: number): THREE.CanvasTexture {
+  const size = 256;
   const [c, g] = canvas(size);
-  g.textAlign = "center";
-  g.textBaseline = "middle";
-  g.font = `900 104px "Arial Black", "Segoe UI Black", "Inter", system-ui, sans-serif`;
-  const x = size / 2;
-  const y = size / 2 + 5;
-  g.fillStyle = "rgba(255,255,255,0.95)";
-  g.fillText(String(n), x + 3, y + 3);
-  g.fillStyle = "rgba(70,45,10,0.75)";
-  g.fillText(String(n), x - 3, y - 3);
-  g.fillStyle = DIGIT_COLORS[n];
-  g.fillText(String(n), x, y);
-  // leve escurecimento na borda interna reforça a gravação
-  g.globalCompositeOperation = "source-atop";
-  const shade = g.createLinearGradient(0, 20, 0, 110);
-  shade.addColorStop(0, "rgba(0,0,0,0.28)");
-  shade.addColorStop(0.45, "rgba(0,0,0,0)");
-  g.fillStyle = shade;
-  g.fillRect(0, 0, size, size);
+  const px = size / PIP_AREA;
+  const r = PIP_RADIUS * px;
+  for (const [dx, dy] of PIP_LAYOUT[n]) {
+    const x = size / 2 + dx * PIP_SPACING * px;
+    const y = size / 2 + dy * PIP_SPACING * px;
+    g.fillStyle = VALUE_COLORS[n];
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+    // borda interna mais escura no alto = cavidade iluminada de cima
+    const shade = g.createRadialGradient(x, y + r * 0.3, r * 0.2, x, y, r);
+    shade.addColorStop(0, "rgba(255,255,255,0.12)");
+    shade.addColorStop(0.75, "rgba(0,0,0,0)");
+    shade.addColorStop(1, "rgba(0,0,0,0.35)");
+    g.fillStyle = shade;
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+
+/** Tamanho (em unidades da mesa) do quadrado onde as divisórias são desenhadas, centrado na peça. */
+export const DIVIDER_AREA = 0.6;
+
+/**
+ * Divisórias em "Y": três linhas do centro em direção ao meio de cada lado, separando os cantos.
+ * Desenhada para a peça com a ponta para cima (lados: base, esquerdo e direito).
+ */
+export function dividerTexture(): THREE.CanvasTexture {
+  const size = 512;
+  const [c, g] = canvas(size);
+  const px = size / DIVIDER_AREA;
+  const len = 0.205 * px;
+  g.strokeStyle = "rgba(25,25,25,0.9)";
+  g.lineWidth = 0.013 * px;
+  g.lineCap = "round";
+  const cx = size / 2;
+  const cy = size / 2;
+  // direções do centro ao meio de cada lado: base (para baixo), lado esquerdo e lado direito (para cima)
+  for (const [dx, dy] of [[0, 1], [-Math.sqrt(3) / 2, -0.5], [Math.sqrt(3) / 2, -0.5]]) {
+    g.beginPath();
+    g.moveTo(cx, cy);
+    g.lineTo(cx + dx * len, cy + dy * len);
+    g.stroke();
+  }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 8;

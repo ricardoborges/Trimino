@@ -112,7 +112,7 @@ export class Board3D implements Board {
     for (const cell of board) {
       const k = cellKey(cell.r, cell.c);
       if (this.tiles.has(k)) continue;
-      const group = this.kit.build(cell.r, cell.c, cell.vals, this.kit.tileMat, colorOf(cell.by));
+      const group = this.kit.build(cell.r, cell.c, cell.vals);
       this.scene.add(group);
       // Só anima o que chegou depois da primeira renderização (não ao entrar numa partida em andamento).
       this.tiles.set(k, { group, key: k, dropStart: this.renderedOnce && board.length > 1 ? now : null });

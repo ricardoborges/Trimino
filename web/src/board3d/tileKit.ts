@@ -3,15 +3,14 @@
 
 import * as THREE from "three";
 import { cellVertices, isUp, vertexToPixel, type Values } from "@trimino/shared";
-import { digitTexture } from "./textures.ts";
+import { DIVIDER_AREA, PIP_AREA, dividerTexture, pipTexture } from "./textures.ts";
 
 export const H = Math.sqrt(3) / 2;
 export const THICK = 0.12; // espessura total da peça
 export const BEVEL = 0.03;
 export const GAP = 0.03; // sulco entre peças vizinhas
 const CORNER = 0.07; // raio dos cantos arredondados
-const DIGIT_SIZE = 0.28;
-const DIGIT_PULL = 0.43; // quanto o número é puxado do canto para o centro
+const PIP_DISTANCE = 0.235; // distância do centro da peça ao centro dos pontinhos de cada canto
 export const ACCENT = new THREE.Color("#f2b33d");
 
 type Corners = [THREE.Vector2, THREE.Vector2, THREE.Vector2];
@@ -65,33 +64,26 @@ export class TileKit {
   readonly tileMat: THREE.MeshStandardMaterial;
   readonly previewMat: THREE.MeshStandardMaterial;
   private geo = { up: tileGeometry(true), down: tileGeometry(false) };
-  private digitGeo = new THREE.PlaneGeometry(DIGIT_SIZE, DIGIT_SIZE).rotateX(-Math.PI / 2);
-  private gemGeo = new THREE.CylinderGeometry(0.036, 0.04, 0.008, 24);
-  private digitMats: THREE.MeshStandardMaterial[];
-  private gemMats = new Map<string, THREE.MeshStandardMaterial>();
+  private pipGeo = new THREE.PlaneGeometry(PIP_AREA, PIP_AREA).rotateX(-Math.PI / 2);
+  private dividerGeo = new THREE.PlaneGeometry(DIVIDER_AREA, DIVIDER_AREA).rotateX(-Math.PI / 2);
+  private dividerMat: THREE.MeshStandardMaterial;
+  private pipMats: THREE.MeshStandardMaterial[];
 
   constructor() {
-    // Creme liso e fosco: sem verniz, reflexos ou manchas.
-    this.tileMat = new THREE.MeshStandardMaterial({ color: "#f3ead6", roughness: 0.8, metalness: 0 });
+    // Branco liso e fosco: sem verniz, reflexos ou manchas.
+    this.tileMat = new THREE.MeshStandardMaterial({ color: "#f7f5ef", roughness: 0.8, metalness: 0 });
     this.previewMat = this.tileMat.clone();
     this.previewMat.emissive = ACCENT.clone();
     this.previewMat.emissiveIntensity = 0.07;
 
-    this.digitMats = [0, 1, 2, 3, 4, 5].map(
-      (n) =>
-        new THREE.MeshStandardMaterial({
-          map: digitTexture(n),
-          transparent: true,
-          roughness: 0.5,
-          depthWrite: false,
-          polygonOffset: true,
-          polygonOffsetFactor: -2,
-        }),
-    );
+    const decal = (map: THREE.Texture) =>
+      new THREE.MeshStandardMaterial({ map, transparent: true, roughness: 0.6, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+    this.pipMats = [0, 1, 2, 3, 4, 5].map((n) => decal(pipTexture(n)));
+    this.dividerMat = decal(dividerTexture());
   }
 
-  /** Peça na célula (r, c), já posicionada na mesa. `owner` adiciona a marca com a cor de quem jogou. */
-  build(r: number, c: number, vals: Values, mat: THREE.Material = this.tileMat, owner: string | null = null): THREE.Group {
+  /** Peça na célula (r, c), já posicionada na mesa. */
+  build(r: number, c: number, vals: Values, mat: THREE.Material = this.tileMat): THREE.Group {
     const up = isUp(r, c);
     const { pts, center } = cellGeometry(r, c);
     const group = new THREE.Group();
@@ -102,32 +94,26 @@ export class TileKit {
     body.receiveShadow = true;
     group.add(body);
 
+    // Divisórias em "Y" separando os três cantos (a textura é da peça com a ponta para cima).
+    const divider = new THREE.Mesh(this.dividerGeo, this.dividerMat);
+    divider.position.y = THICK + 0.0012;
+    divider.rotation.y = up ? 0 : Math.PI;
+    divider.renderOrder = 1;
+    group.add(divider);
+
+    // Pontinhos de cada canto; o arranjo aponta para o próprio canto.
     pts.forEach((p, i) => {
+      if (vals[i] === 0) return;
       const local = p.clone().sub(center);
-      const pos = local.clone().multiplyScalar(1 - DIGIT_PULL);
-      const digit = new THREE.Mesh(this.digitGeo, this.digitMats[vals[i]]);
-      digit.position.set(pos.x, THICK + 0.0015, pos.y);
-      // O "alto" do número aponta para o seu canto, como nas peças reais.
-      digit.rotation.y = Math.atan2(-local.x, -local.y);
-      digit.renderOrder = 1;
-      group.add(digit);
+      const pos = local.clone().setLength(PIP_DISTANCE);
+      const pips = new THREE.Mesh(this.pipGeo, this.pipMats[vals[i]]);
+      pips.position.set(pos.x, THICK + 0.0016, pos.y);
+      pips.rotation.y = Math.atan2(-local.x, -local.y);
+      pips.renderOrder = 2;
+      group.add(pips);
     });
 
-    if (owner) {
-      const gem = new THREE.Mesh(this.gemGeo, this.gemMaterial(owner));
-      gem.position.y = THICK + 0.002;
-      group.add(gem);
-    }
     return group;
-  }
-
-  private gemMaterial(color: string): THREE.MeshStandardMaterial {
-    let m = this.gemMats.get(color);
-    if (!m) {
-      m = new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
-      this.gemMats.set(color, m);
-    }
-    return m;
   }
 }
 
