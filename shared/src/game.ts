@@ -5,7 +5,7 @@ import type { BoardCell, LogEntry, Move, Phase, RoundSummary } from "./protocol.
 import { fullSet, rotated, tileSum, type Tile } from "./tiles.ts";
 
 export const SCORE = {
-  hexagon: 50,
+  mandala: 50,
   bridge: 40,
   emptyHand: 25,
   drawPenalty: 5,
@@ -236,7 +236,10 @@ export class TriminoGame {
     const move = this.fits(tile, r, c, ((rot % 3) + 3) % 3);
     if (!move) throw new RuleError("A peça não encaixa aí.");
 
-    const { points, bonuses } = this.evaluate(move);
+    // Pontos da jogada = soma da pedra + bônus − 5 por pedra comprada nesta vez.
+    const { points: gross, bonuses } = this.evaluate(move);
+    const penalty = this.drawPenalty();
+    const points = gross - penalty;
     const verts = cellVertices(r, c);
     p.hand.splice(idx, 1);
     this.board.set(cellKey(r, c), { r, c, vals: move.vals, tileId, by: p.id });
@@ -244,11 +247,22 @@ export class TriminoGame {
 
     p.score += points;
     this.consecutivePasses = 0;
-    this.addLog({ actor: p.name, action: "jogou", tile: tile.v, points, note: bonuses.length ? bonuses.join(", ") : undefined });
+    const notes = [...bonuses];
+    if (penalty) notes.unshift(`pedra ${tileSum(tile)}`), notes.push(`−${penalty} de ${this.drawsLabel()}`);
+    this.addLog({ actor: p.name, action: "jogou", tile: tile.v, points, note: notes.length ? notes.join(", ") : undefined });
 
     if (p.hand.length === 0) this.endRound(p, "emptyHand");
     else this.nextTurn();
     return { points, bonuses };
+  }
+
+  /** Desconto pelas pedras compradas nesta vez (cobrado ao jogar ou ao passar). */
+  private drawPenalty(): number {
+    return this.drawsThisTurn * SCORE.drawPenalty;
+  }
+
+  private drawsLabel(): string {
+    return this.drawsThisTurn === 1 ? "1 compra" : `${this.drawsThisTurn} compras`;
   }
 
   /** Pontos que uma jogada válida renderia (peça + bônus), sem alterar o jogo. */
@@ -271,12 +285,12 @@ export class TriminoGame {
       }
     }
 
-    // Hexágono: esta peça fecha as seis células ao redor de um de seus cantos.
+    // Mandala (hexágono): esta peça fecha as seis células ao redor de um de seus cantos.
     const here = cellKey(r, c);
     for (const [x, y] of verts)
       if (cellsAroundVertex(x, y).every(([cr, cc]) => cellKey(cr, cc) === here || this.board.has(cellKey(cr, cc)))) {
-        points += SCORE.hexagon;
-        bonuses.push(`hexágono +${SCORE.hexagon}`);
+        points += SCORE.mandala;
+        bonuses.push(`mandala +${SCORE.mandala}`);
       }
     return { points, bonuses };
   }
@@ -286,18 +300,24 @@ export class TriminoGame {
     const p = this.current;
     const tile = this.pool.pop()!;
     p.hand.push(tile);
-    p.score -= SCORE.drawPenalty;
     this.drawsThisTurn++;
-    this.addLog({ actor: p.name, action: "comprou uma peça", points: -SCORE.drawPenalty });
+    // o −5 da compra é cobrado junto com a jogada (ou ao passar)
+    this.addLog({ actor: p.name, action: "comprou uma peça" });
     return tile;
   }
 
   pass(playerId: string): void {
     if (!this.canPass(playerId)) throw new RuleError("Compre até 3 peças antes de passar.");
     const p = this.current;
-    p.score -= SCORE.passPenalty;
+    const drawn = this.drawPenalty();
+    p.score -= SCORE.passPenalty + drawn;
     this.consecutivePasses++;
-    this.addLog({ actor: p.name, action: "passou a vez", points: -SCORE.passPenalty });
+    this.addLog({
+      actor: p.name,
+      action: "passou a vez",
+      points: -(SCORE.passPenalty + drawn),
+      note: drawn ? `−${SCORE.passPenalty} de passar, −${drawn} de ${this.drawsLabel()}` : undefined,
+    });
     if (this.pool.length === 0 && this.consecutivePasses >= this.active.length) this.endBlocked();
     else this.nextTurn();
   }

@@ -152,6 +152,29 @@ describe("TriminoGame", () => {
     expect(() => g.place(p.id, p.hand[0].id, 5, 5, 0)).toThrow(); // sem vizinho
   });
 
+  it("jogada comum: soma da pedra − 5 por pedra comprada na vez", () => {
+    for (let seed = 1; seed < 60; seed++) {
+      const g = started(seed, 10_000);
+      open(g);
+      const p = g.current;
+      const before = p.score;
+      g.draw(p.id);
+      g.draw(p.id);
+      expect(p.score).toBe(before); // a compra não desconta na hora
+      const m = g.validMoves(p.id).find((x) => g.evaluate(x).bonuses.length === 0);
+      if (!m) continue;
+      const tile = p.hand.find((t) => t.id === m.tileId)!;
+      const res = g.place(p.id, m.tileId, m.r, m.c, m.rot);
+      const expected = tile.v[0] + tile.v[1] + tile.v[2] - 2 * SCORE.drawPenalty;
+      expect(res.points).toBe(expected);
+      expect(p.score - before).toBe(expected);
+      expect(g.log.at(-1)).toMatchObject({ action: "jogou", points: expected });
+      expect(g.log.at(-1)!.note).toContain("2 compras");
+      return;
+    }
+    throw new Error("nenhuma semente com jogada comum após 2 compras");
+  });
+
   it("comprar custa pontos e passar só depois de 3 compras", () => {
     const g = started(5);
     open(g);
@@ -165,7 +188,22 @@ describe("TriminoGame", () => {
     expect(g.current.id).not.toBe(p.id);
   });
 
-  it("dá bônus de hexágono ao fechar seis peças ao redor de um vértice", () => {
+  it("ponte: 40 + a soma da pedra jogada", () => {
+    // (0,0) encosta por aresta em (0,-1); o canto oposto (2,1) toca (0,2), que não é vizinha por aresta.
+    const g = started(4, 10_000);
+    for (const [r, c] of [[0, -1], [0, 2]]) {
+      g.board.set(`${r},${c}`, { r, c, vals: [1, 1, 1], tileId: -1, by: "x" });
+      for (const v of cellVertices(r, c)) g.vertices.set(vertexKey(...v), 1);
+    }
+    const p = g.current;
+    const tile = fullSet().find((t) => t.v.join() === "1,1,1")!;
+    p.hand = [tile, fullSet()[0]];
+    const res = g.place(p.id, tile.id, 0, 0, 0);
+    expect(res.bonuses).toEqual(["ponte +40"]);
+    expect(res.points).toBe(40 + 3);
+  });
+
+  it("dá bônus de mandala ao fechar seis peças ao redor de um vértice", () => {
     const g = started(9, 10_000);
     // Monta o tabuleiro manualmente com cinco peças 0-0-0 ao redor de um vértice.
     const [cx, cy] = cellVertices(0, 0)[2];
@@ -179,7 +217,8 @@ describe("TriminoGame", () => {
     p.hand = [zero, { id: 99, v: [1, 1, 1] }];
     const [r, c] = ring[5];
     const res = g.place(p.id, 0, r, c, 0);
-    expect(res.bonuses.some((b) => b.startsWith("hexágono"))).toBe(true);
+    expect(res.bonuses).toEqual(["mandala +50"]);
+    expect(res.points).toBe(50 + 0); // 50 + a soma da pedra (0-0-0)
   });
 
   it("esvaziar a mão encerra a rodada com bônus", () => {

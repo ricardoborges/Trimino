@@ -81,7 +81,7 @@ async function askModel(game: TriminoGame, playerId: string, options: Candidate[
         {
           role: "system",
           content:
-            "Você joga Triminó (dominó triangular). Cada peça jogada vale a soma dos números; ponte vale +40 e hexágono +50. " +
+            "Você joga Triminó (dominó triangular). Cada peça jogada vale a soma dos números; ponte vale +40 e mandala (fechar um hexágono) +50; cada pedra comprada na vez desconta 5 da jogada. " +
             "Quem esvazia a mão primeiro ganha 25 + a soma das peças dos adversários. Escolha a melhor jogada entre as opções, " +
             "equilibrando pontos agora com livrar-se de peças pesadas e não deixar a mão travada. " +
             'Responda só com JSON: {"jogada": <índice i da opção>}.',

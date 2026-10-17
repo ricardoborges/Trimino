@@ -49,12 +49,12 @@ cd android && ./gradlew testDebugUnitTest
 - **Sem dicas:** o jogo mostra todos os espaços livres encostados no jogo, mas não indica quais peças encaixam. Se a peça não servir, o servidor recusa a jogada.
 - A peça precisa encostar por uma aresta, e todos os cantos que tocam outras peças têm que bater.
 - Pontuação:
-  - cada peça vale a soma dos números;
-  - ponte: +40;
-  - hexágono: +50;
+  - jogada comum: a soma dos pontos da pedra, menos 5 por pedra comprada naquela vez;
+  - ponte: 40 + a soma da pedra (menos as compras da vez);
+  - mandala (a peça fecha o "círculo" de seis peças em volta de um ponto): 50 + a soma da pedra (menos as compras da vez);
   - a abertura vale só a soma dos pontos da pedra, sem bônus (abrir com 0-0-0 vale 0).
 - Penalidades:
-  - cada compra custa −5, até 3 por vez;
+  - dá para comprar até 3 pedras por vez; cada uma desconta 5, cobrados junto com a jogada (ou ao passar);
   - passar custa −10, e só é permitido depois de 3 compras ou com o monte vazio.
 - Fim da rodada:
   - quem esvazia a mão ganha +25 mais a soma das peças dos adversários;
