@@ -61,8 +61,8 @@ let seenCelebration: number | null = null;
 /** Ordem das pedras na mão escolhida pelo jogador (ids); pedras novas entram no fim. */
 let handOrder: number[] = [];
 let draggingHand = false;
-/** Painel "Adversários" ligado, e os adversários cuja quantidade de pedras o jogador tocou para ver. */
-let showSeats = false;
+/** Painel "Adversários" (começa ligado), e os adversários cuja quantidade de pedras o jogador tocou para ver. */
+let showSeats = true;
 /** Quando termina a comemoração em andamento (a conferência da batida espera por ela). */
 let celebrationEndsAt = 0;
 /** Conferência da batida da rodada que acabou (chave: rodada + vencedor), mantida entre os estados. */
