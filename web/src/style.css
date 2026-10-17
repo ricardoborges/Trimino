@@ -132,6 +132,65 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .board3d { cursor: grab; }
 
 
+/* comemoração de ponte/mandala */
+.confetti { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; }
+/* lançadores de confete: escondidos nos cantos de baixo; na comemoração surgem, dão o tranco e somem */
+.popper {
+  position: absolute; bottom: 56px; width: clamp(44px, 6vw, 64px); z-index: 5; pointer-events: none; /* acima dos botões do canto */
+  opacity: 0; filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.45));
+}
+.popper svg { display: block; width: 100%; }
+.popper-left { left: 14px; transform-origin: 50% 90%; --aim: 38deg; }
+.popper-right { right: 14px; transform-origin: 50% 90%; --aim: -38deg; }
+.popper.firing { animation: popper-fire 3.2s ease-out forwards; }
+@keyframes popper-fire {
+  0% { opacity: 0; transform: translateY(40px) rotate(var(--aim)) scale(0.8); }
+  10% { opacity: 1; transform: translateY(0) rotate(var(--aim)) scale(1); }
+  14% { transform: translateY(10px) rotate(var(--aim)) scale(1.08, 0.88); } /* tranco do disparo */
+  22% { transform: translateY(0) rotate(var(--aim)) scale(1); }
+  80% { opacity: 1; transform: translateY(0) rotate(var(--aim)); }
+  100% { opacity: 0; transform: translateY(30px) rotate(var(--aim)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .popper.firing { animation: none; }
+}
+.celebration-label {
+  position: absolute; z-index: 5; pointer-events: none; white-space: nowrap;
+  transform: translate(-50%, -50%); font-size: clamp(22px, 4vw, 40px); font-weight: 900; letter-spacing: 0.02em;
+  color: #fff6d8; text-shadow: 0 2px 0 #b9770e, 0 4px 18px rgba(0, 0, 0, 0.55);
+  animation: celebrate-pop 2.2s cubic-bezier(0.2, 0.9, 0.3, 1.2) forwards;
+}
+@keyframes celebrate-pop {
+  0% { opacity: 0; transform: translate(-50%, -30%) scale(0.4); }
+  15% { opacity: 1; transform: translate(-50%, -80%) scale(1.15); }
+  30% { transform: translate(-50%, -85%) scale(1); }
+  80% { opacity: 1; transform: translate(-50%, -110%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -140%) scale(0.95); }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* lançadores de confete: escondidos nos cantos de baixo; na comemoração surgem, dão o tranco e somem */
+.popper {
+  position: absolute; bottom: 56px; width: clamp(44px, 6vw, 64px); z-index: 5; pointer-events: none; /* acima dos botões do canto */
+  opacity: 0; filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.45));
+}
+.popper svg { display: block; width: 100%; }
+.popper-left { left: 14px; transform-origin: 50% 90%; --aim: 38deg; }
+.popper-right { right: 14px; transform-origin: 50% 90%; --aim: -38deg; }
+.popper.firing { animation: popper-fire 3.2s ease-out forwards; }
+@keyframes popper-fire {
+  0% { opacity: 0; transform: translateY(40px) rotate(var(--aim)) scale(0.8); }
+  10% { opacity: 1; transform: translateY(0) rotate(var(--aim)) scale(1); }
+  14% { transform: translateY(10px) rotate(var(--aim)) scale(1.08, 0.88); } /* tranco do disparo */
+  22% { transform: translateY(0) rotate(var(--aim)) scale(1); }
+  80% { opacity: 1; transform: translateY(0) rotate(var(--aim)); }
+  100% { opacity: 0; transform: translateY(30px) rotate(var(--aim)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .popper.firing { animation: none; }
+}
+.celebration-label { animation-duration: 2.2s; animation-timing-function: linear; }
+}
+
 /* jogadores IA */
 .bots { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .bot-chip {

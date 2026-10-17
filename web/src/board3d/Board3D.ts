@@ -11,6 +11,13 @@ const PITCH_3D = THREE.MathUtils.degToRad(52);
 const PITCH_TOP = THREE.MathUtils.degToRad(89);
 
 /** Contorno fino (anel triangular) e preenchimento de um encaixe livre, deitados na mesa. */
+/** Anel triangular grosso, por cima da borda da peça, usado no destaque de ponte/mandala. */
+function thickRing(up: boolean): THREE.BufferGeometry {
+  const shape = roundedTriangle(up, GAP / 2 + 0.035);
+  shape.holes.push(new THREE.Path(roundedTriangle(up, GAP / 2 + 0.085).getPoints(6)));
+  return new THREE.ShapeGeometry(shape, 6).rotateX(-Math.PI / 2);
+}
+
 function slotGeometries(up: boolean): { ring: THREE.BufferGeometry; fill: THREE.BufferGeometry } {
   const outer = roundedTriangle(up, GAP / 2 + 0.01);
   const inner = new THREE.Path(roundedTriangle(up, GAP / 2 + 0.035).getPoints(6));
@@ -48,6 +55,11 @@ export class Board3D implements Board {
   private tiles = new Map<string, TileEntry>();
   private ghostLayer = new THREE.Group();
   private lastMark: THREE.Mesh;
+  /** Destaque das pedras de uma ponte/mandala: contornos dourados + brilho, até `until`. */
+  private highlight = { layer: new THREE.Group(), until: 0, bodies: [] as THREE.Mesh[] };
+  private glowMat: THREE.MeshStandardMaterial;
+  /** Contorno grosso do destaque (mais largo que o contorno dos encaixes livres). */
+  private highlightRing = { up: thickRing(true), down: thickRing(false) };
   private ghostCells = new Map<string, Ghost>();
   private hoverKey: string | null = null;
   private renderedOnce = false;
@@ -95,7 +107,9 @@ export class Board3D implements Board {
     // Última jogada: contorno fino na cor de quem jogou (sem brilho).
     this.lastMark = new THREE.Mesh(this.slotGeo.up.ring, new THREE.MeshBasicMaterial({ color: "#ffffff" }));
     this.lastMark.visible = false;
-    this.scene.add(this.lastMark, this.ghostLayer);
+    this.scene.add(this.lastMark, this.ghostLayer, this.highlight.layer);
+    this.glowMat = this.kit.tileMat.clone();
+    this.glowMat.emissive = new THREE.Color("#f2b33d");
 
     this.bindInput();
     new ResizeObserver(() => this.resize()).observe(host);
@@ -210,6 +224,42 @@ export class Board3D implements Board {
     );
   }
 
+  /**
+   * Destaca as pedras de uma ponte/mandala por `ms` milissegundos.
+   * Devolve o centro da formação na tela, para a comemoração sair dali.
+   */
+  celebrate(cells: { r: number; c: number }[], ms = 3200): { x: number; y: number } | null {
+    this.clearHighlight();
+    const h = this.highlight;
+    const sum = new THREE.Vector2();
+    for (const { r, c } of cells) {
+      const tile = this.tiles.get(cellKey(r, c));
+      if (!tile) continue;
+      const body = tile.group.children[0] as THREE.Mesh;
+      body.material = this.glowMat;
+      h.bodies.push(body);
+      const { center } = cellGeometry(r, c);
+      sum.add(center);
+      const ring = new THREE.Mesh(isUp(r, c) ? this.highlightRing.up : this.highlightRing.down, new THREE.MeshBasicMaterial({ color: "#ffc531", transparent: true }));
+      ring.position.set(center.x, THICK + 0.006, center.y);
+      h.layer.add(ring);
+    }
+    if (!h.bodies.length) return null;
+    h.until = performance.now() + ms;
+    sum.divideScalar(h.bodies.length);
+    const v = new THREE.Vector3(sum.x, THICK, sum.y).project(this.camera);
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
+  }
+
+  private clearHighlight(): void {
+    const h = this.highlight;
+    for (const body of h.bodies) body.material = this.kit.tileMat;
+    h.bodies = [];
+    h.layer.clear();
+    h.until = 0;
+  }
+
   toggleView(): boolean {
     const top = this.goal.pitch < PITCH_TOP - 0.01;
     this.goal.pitch = top ? PITCH_TOP : PITCH_3D;
@@ -263,6 +313,19 @@ export class Board3D implements Board {
         tile.group.position.y = 0;
         tile.group.scale.set(1, 1, 1);
         tile.dropStart = null;
+      }
+    }
+
+    // destaque de ponte/mandala: brilho pulsando e sumindo no fim
+    if (this.highlight.until) {
+      const left = this.highlight.until - t;
+      if (left <= 0) this.clearHighlight();
+      else {
+        const fadeOut = Math.min(1, left / 600);
+        const beat = 0.5 + 0.5 * Math.sin(t / 140);
+        this.glowMat.emissiveIntensity = (0.35 + beat * 0.45) * fadeOut;
+        for (const ring of this.highlight.layer.children)
+          ((ring as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = (0.6 + beat * 0.4) * fadeOut;
       }
     }
 

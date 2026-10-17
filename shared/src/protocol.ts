@@ -79,6 +79,16 @@ export interface GameState {
   roundSummary: RoundSummary | null;
   /** Vencedor da partida, quando ela termina. */
   winnerId: string | null;
+  /**
+   * Última ponte/mandala da rodada, para destacar as pedras e comemorar.
+   * `seq` cresce a cada nova; o cliente só comemora quando vê um `seq` maior que o anterior.
+   */
+  celebration: {
+    seq: number;
+    playerId: string;
+    points: number;
+    formations: { kind: "ponte" | "mandala"; cells: { r: number; c: number }[] }[];
+  } | null;
   you: {
     id: string;
     hand: Tile[];

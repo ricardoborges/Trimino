@@ -43,6 +43,8 @@ export interface Board {
   fit(board: { r: number; c: number }[]): void;
   /** Alterna câmera inclinada / vista de cima; devolve true se ficou de cima. */
   toggleView?(): boolean;
+  /** Destaca as pedras de uma ponte/mandala; devolve o centro da formação na tela. */
+  celebrate?(cells: { r: number; c: number }[]): { x: number; y: number } | null;
 }
 
 export interface Ghost {

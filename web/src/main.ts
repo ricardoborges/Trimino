@@ -4,6 +4,7 @@ import { VALUE_COLORS } from "./board3d/textures.ts";
 import { BoardView, handTileSvg, type Board, type Ghost } from "./board.ts";
 import { Board3D, webglAvailable } from "./board3d/Board3D.ts";
 import { tilePhoto } from "./board3d/tilePhotos.ts";
+import { Confetti } from "./confetti.ts";
 import { Connection } from "./net.ts";
 import { Mesh } from "./rtc.ts";
 
@@ -57,7 +58,9 @@ let selectedTile: number | null = null;
 let preview: { r: number; c: number; rot: number } | null = null;
 let lastBoardSize = -1;
 let lastRound = -1;
-let seenLog: string[] = []; // entradas serializadas, para comparar com o próximo estado
+let seenLog: string[] = [];
+/** Última comemoração já mostrada (null até o primeiro estado, para não repetir ao entrar/recarregar). */
+let seenCelebration: number | null = null; // entradas serializadas, para comparar com o próximo estado
 
 async function start(name: string, room: string, withMedia: boolean): Promise<void> {
   const board: Board = webglAvailable() ? new Board3D($("table")) : new BoardView($("table"));
@@ -77,7 +80,9 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
     if (!mesh.local) toast("Não foi possível acessar câmera/microfone.");
   }
 
-  if (import.meta.env.DEV) Object.assign(window, { __trimino: { board, get state() { return state; } } });
+  const confetti = new Confetti($("table"));
+
+  if (import.meta.env.DEV) Object.assign(window, { __trimino: { board, confetti, get state() { return state; } } });
 
   let myId = "";
   const conn = new Connection({ t: "join", room, name, clientId: clientId() }, onMessage, (online) => {
@@ -263,6 +268,21 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
     if (s.round !== lastRound || (s.board.length > 0) !== (lastBoardSize > 0)) board.fit(s.board);
     lastRound = s.round;
     lastBoardSize = s.board.length;
+
+    // ponte/mandala nova: destaca as pedras e comemora (depois de a peça terminar de cair)
+    const cel = s.celebration;
+    if (cel && seenCelebration !== null && cel.seq > seenCelebration) {
+      const cells = cel.formations.flatMap((f) => f.cells);
+      const kinds = [...new Set(cel.formations.map((f) => f.kind))];
+      const label = `${kinds.map((k) => (k === "ponte" ? "PONTE" : "MANDALA")).join(" + ")}! +${cel.points}`;
+      const who = s.players.find((p) => p.id === cel.playerId)?.name;
+      setTimeout(() => {
+        const at = board.celebrate?.(cells);
+        const rect = $("table").getBoundingClientRect();
+        confetti.burst(at?.x ?? rect.left + rect.width / 2, at?.y ?? rect.top + rect.height / 2, who ? `${who}: ${label}` : label);
+      }, 480);
+    }
+    seenCelebration = cel?.seq ?? 0;
 
     // placar
     $("room-code").textContent = `Sala ${s.room}`;

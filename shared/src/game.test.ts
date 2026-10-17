@@ -201,6 +201,10 @@ describe("TriminoGame", () => {
     const res = g.place(p.id, tile.id, 0, 0, 0);
     expect(res.bonuses).toEqual(["ponte +40"]);
     expect(res.points).toBe(40 + 3);
+    // a formação inclui a peça nova, a vizinha por aresta e a que encosta pelo canto
+    const cells = res.formations[0].cells.map((x) => `${x.r},${x.c}`);
+    expect(cells).toEqual(expect.arrayContaining(["0,0", "0,-1", "0,2"]));
+    expect(g.celebration).toMatchObject({ seq: 1, playerId: p.id, points: 43 });
   });
 
   it("dá bônus de mandala ao fechar seis peças ao redor de um vértice", () => {
@@ -218,6 +222,7 @@ describe("TriminoGame", () => {
     const [r, c] = ring[5];
     const res = g.place(p.id, 0, r, c, 0);
     expect(res.bonuses).toEqual(["mandala +50"]);
+    expect(res.formations).toEqual([{ kind: "mandala", cells: ring.map(([r, c]) => ({ r, c })) }]);
     expect(res.points).toBe(50 + 0); // 50 + a soma da pedra (0-0-0)
   });
 

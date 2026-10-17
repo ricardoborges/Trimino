@@ -33,9 +33,23 @@ export interface GamePlayer {
 export interface PlaceResult {
   points: number;
   bonuses: string[];
+  /** Pedras que formaram cada bônus (para o destaque no tabuleiro). */
+  formations: Formation[];
+}
+
+export interface Formation {
+  kind: "ponte" | "mandala";
+  cells: { r: number; c: number }[];
 }
 
 export class RuleError extends Error {}
+
+export interface Celebration {
+  seq: number;
+  playerId: string;
+  points: number;
+  formations: Formation[];
+}
 
 export interface LotPick {
   playerId: string;
@@ -65,6 +79,8 @@ export class TriminoGame {
   roundSummary: RoundSummary | null = null;
   /** Vencedor da partida (definido no fim do jogo). */
   winnerId: string | null = null;
+  /** Última ponte/mandala; `seq` cresce a cada uma para o cliente comemorar uma vez só. */
+  celebration: Celebration | null = null;
   log: LogEntry[] = [];
 
   constructor(
@@ -237,7 +253,7 @@ export class TriminoGame {
     if (!move) throw new RuleError("A peça não encaixa aí.");
 
     // Pontos da jogada = soma da pedra + bônus − 5 por pedra comprada nesta vez.
-    const { points: gross, bonuses } = this.evaluate(move);
+    const { points: gross, bonuses, formations } = this.evaluate(move);
     const penalty = this.drawPenalty();
     const points = gross - penalty;
     const verts = cellVertices(r, c);
@@ -247,13 +263,15 @@ export class TriminoGame {
 
     p.score += points;
     this.consecutivePasses = 0;
+    if (formations.length)
+      this.celebration = { seq: (this.celebration?.seq ?? 0) + 1, playerId: p.id, points, formations };
     const notes = [...bonuses];
     if (penalty) notes.unshift(`pedra ${tileSum(tile)}`), notes.push(`−${penalty} de ${this.drawsLabel()}`);
     this.addLog({ actor: p.name, action: "jogou", tile: tile.v, points, note: notes.length ? notes.join(", ") : undefined });
 
     if (p.hand.length === 0) this.endRound(p, "emptyHand");
     else this.nextTurn();
-    return { points, bonuses };
+    return { points, bonuses, formations };
   }
 
   /** Desconto pelas pedras compradas nesta vez (cobrado ao jogar ou ao passar). */
@@ -271,17 +289,23 @@ export class TriminoGame {
     const tile = fullSet()[tileId];
     const verts = cellVertices(r, c);
     const bonuses: string[] = [];
+    const formations: Formation[] = [];
     let points = tileSum(tile);
+    const occupied = (rr: number, cc: number) => this.board.has(cellKey(rr, cc));
 
     // A abertura vale só a soma dos pontos da pedra (sem bônus): abrir com 0-0-0 vale 0.
     if (this.board.size > 0) {
       // Ponte: um canto encosta numa peça que não é vizinha por aresta.
+      const neighbors = edgeNeighbors(r, c).filter(([nr, nc]) => occupied(nr, nc));
       const neighborVerts = new Set<string>();
-      for (const [nr, nc] of edgeNeighbors(r, c))
-        if (this.board.has(cellKey(nr, nc))) for (const v of cellVertices(nr, nc)) neighborVerts.add(vertexKey(...v));
-      if (verts.some((v) => this.vertices.has(vertexKey(...v)) && !neighborVerts.has(vertexKey(...v)))) {
+      for (const [nr, nc] of neighbors) for (const v of cellVertices(nr, nc)) neighborVerts.add(vertexKey(...v));
+      const bridged = verts.filter((v) => this.vertices.has(vertexKey(...v)) && !neighborVerts.has(vertexKey(...v)));
+      if (bridged.length) {
         points += SCORE.bridge;
         bonuses.push(`ponte +${SCORE.bridge}`);
+        // a ponte: a peça nova, as vizinhas por aresta e as peças que encostam só pelo canto
+        const across = bridged.flatMap(([x, y]) => cellsAroundVertex(x, y).filter(([cr, cc]) => occupied(cr, cc)));
+        formations.push({ kind: "ponte", cells: [[r, c], ...neighbors, ...across].map(([cr, cc]) => ({ r: cr, c: cc })) });
       }
     }
 
@@ -291,8 +315,9 @@ export class TriminoGame {
       if (cellsAroundVertex(x, y).every(([cr, cc]) => cellKey(cr, cc) === here || this.board.has(cellKey(cr, cc)))) {
         points += SCORE.mandala;
         bonuses.push(`mandala +${SCORE.mandala}`);
+        formations.push({ kind: "mandala", cells: cellsAroundVertex(x, y).map(([cr, cc]) => ({ r: cr, c: cc })) });
       }
-    return { points, bonuses };
+    return { points, bonuses, formations };
   }
 
   draw(playerId: string): Tile {

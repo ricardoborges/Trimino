@@ -254,6 +254,7 @@ export class Room {
       log: g?.log.slice(-20) ?? [],
       roundSummary: g?.roundSummary ?? null,
       winnerId: g?.winnerId ?? null,
+      celebration: g?.celebration ?? null,
       you: {
         id: viewer.id,
         hand: me?.hand ?? [],
