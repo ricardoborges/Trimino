@@ -219,6 +219,6 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
 
   companion object {
     /** 10.0.2.2 é o localhost da máquina host visto de dentro do emulador. */
-    const val DEFAULT_SERVER = "ws://10.0.2.2:8080/ws"
+    const val DEFAULT_SERVER = "ws://10.0.2.2:8787/ws"
   }
 }

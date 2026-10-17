@@ -9,6 +9,8 @@ import { ACCENT, GAP, TABLE_COLOR, THICK, TileKit, addFlatLighting, cellGeometry
 
 const PITCH_3D = THREE.MathUtils.degToRad(52);
 const PITCH_TOP = THREE.MathUtils.degToRad(89);
+/** Até onde (na tela, de -1 a 1) o enquadramento automático deixa as pedras chegarem. */
+const FIT_MARGIN = 0.94;
 
 /** Contorno fino (anel triangular) e preenchimento de um encaixe livre, deitados na mesa. */
 /** Anel triangular grosso, por cima da borda da peça, usado no destaque de ponte/mandala. */
@@ -54,7 +56,6 @@ export class Board3D implements Board {
   private sun: THREE.DirectionalLight;
   private tiles = new Map<string, TileEntry>();
   private ghostLayer = new THREE.Group();
-  private lastMark: THREE.Mesh;
   /** Destaque das pedras de uma ponte/mandala: contornos dourados + brilho, até `until`. */
   private highlight = { layer: new THREE.Group(), until: 0, bodies: [] as THREE.Mesh[] };
   private glowMat: THREE.MeshStandardMaterial;
@@ -105,9 +106,7 @@ export class Board3D implements Board {
     this.scene.add(table);
 
     // Última jogada: contorno fino na cor de quem jogou (sem brilho).
-    this.lastMark = new THREE.Mesh(this.slotGeo.up.ring, new THREE.MeshBasicMaterial({ color: "#ffffff" }));
-    this.lastMark.visible = false;
-    this.scene.add(this.lastMark, this.ghostLayer, this.highlight.layer);
+    this.scene.add(this.ghostLayer, this.highlight.layer);
     this.glowMat = this.kit.tileMat.clone();
     this.glowMat.emissive = new THREE.Color("#f2b33d");
 
@@ -119,7 +118,7 @@ export class Board3D implements Board {
 
   // ---------------- API usada pelo main.ts ----------------
 
-  render(board: BoardCell[], colorOf: (playerId: string) => string, ghosts: Ghost[], lastTile: string | null): void {
+  render(board: BoardCell[], _colorOf: (playerId: string) => string, ghosts: Ghost[]): void {
     const now = performance.now();
     const wanted = new Set(board.map((b) => cellKey(b.r, b.c)));
     for (const [k, t] of this.tiles)
@@ -151,16 +150,6 @@ export class Board3D implements Board {
       this.boardRadius = 1;
     }
 
-    const last = lastTile ? board.find((b) => cellKey(b.r, b.c) === lastTile) : undefined;
-    this.lastMark.visible = !!last;
-    if (last) {
-      const { center } = cellGeometry(last.r, last.c);
-      this.lastMark.geometry = isUp(last.r, last.c) ? this.slotGeo.up.ring : this.slotGeo.down.ring;
-      this.lastMark.position.set(center.x, THICK + 0.004, center.y);
-      this.lastMark.scale.setScalar(0.9);
-      (this.lastMark.material as THREE.MeshBasicMaterial).color.set(colorOf(last.by));
-    }
-
     this.ghostLayer.clear();
     this.ghostCells.clear();
     for (const g of ghosts) {
@@ -184,20 +173,53 @@ export class Board3D implements Board {
   }
 
   /** Enquadra as peças e os espaços vizinhos a elas (onde a próxima peça pode ir). */
+  /**
+   * Enquadra o jogo o mais perto possível: todas as pedras inteiras e pelo menos metade de cada espaço livre
+   * em volta (o centro, para dar para tocar). A distância é achada projetando os pontos na câmera de destino.
+   */
   fit(board: { r: number; c: number }[]): void {
     const cells = board.length ? board : [{ r: 0, c: 0 }];
-    const withNeighbors = [...cells, ...cells.flatMap((b) => edgeNeighbors(b.r, b.c).map(([r, c]) => ({ r, c })))];
-    const pts = withNeighbors.flatMap((b) => cellGeometry(b.r, b.c).pts);
-    const box = new THREE.Box2().setFromPoints(pts).expandByScalar(0.45);
-    const size = box.getSize(new THREE.Vector2());
-    box.getCenter(this.goal.target);
-    const tan = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
-    const byWidth = size.x / 2 / (tan * this.camera.aspect);
-    const byDepth = (size.y / 2 / tan) * (1.15 + Math.cos(this.goal.pitch));
-    this.goal.dist = THREE.MathUtils.clamp(Math.max(byWidth, byDepth, 5), 4, 60);
+    const pts = [
+      ...cells.flatMap((b) => cellGeometry(b.r, b.c).pts),
+      ...cells.flatMap((b) => edgeNeighbors(b.r, b.c).map(([r, c]) => cellGeometry(r, c).center)),
+    ];
+    new THREE.Box2().setFromPoints(pts).getCenter(this.goal.target);
+    // Com a câmera inclinada, o centro do retângulo não cai no meio da tela: recentraliza pela projeção.
+    for (let pass = 0; pass < 3; pass++) {
+      let lo = 2, hi = 80;
+      for (let i = 0; i < 24; i++) {
+        const mid = (lo + hi) / 2;
+        if (this.projectedBounds(pts, mid).fits) hi = mid;
+        else lo = mid;
+      }
+      this.goal.dist = hi;
+      const b = this.projectedBounds(pts, hi);
+      // desloca o alvo (no plano da mesa) para equilibrar as margens da tela
+      const tan = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+      this.goal.target.x += ((b.minX + b.maxX) / 2) * hi * tan * this.camera.aspect;
+      this.goal.target.y -= (((b.minY + b.maxY) / 2) * hi * tan) / Math.sin(this.goal.pitch);
+    }
+    this.goal.dist = THREE.MathUtils.clamp(this.goal.dist, 3, 60);
     this.velocity.set(0, 0);
     this.lastFit = board;
     this.userMoved = false;
+  }
+
+  /** Limites dos pontos na tela (coordenadas -1..1) vistos da câmera de destino a uma distância `dist`. */
+  private projectedBounds(pts: THREE.Vector2[], dist = this.goal.dist) {
+    const cam = this.camera.clone();
+    const { target, pitch } = this.goal;
+    cam.position.set(target.x, Math.sin(pitch) * dist, target.y + Math.cos(pitch) * dist);
+    cam.lookAt(target.x, 0, target.y);
+    cam.updateMatrixWorld();
+    const v = new THREE.Vector3();
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of pts) {
+      v.set(p.x, THICK, p.y).project(cam);
+      minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x);
+      minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y);
+    }
+    return { minX, maxX, minY, maxY, fits: minX > -FIT_MARGIN && maxX < FIT_MARGIN && minY > -FIT_MARGIN && maxY < FIT_MARGIN };
   }
 
   /** Posição na tela (px, relativa à janela) do centro de uma célula. Usado nos testes de ponta a ponta. */
@@ -208,20 +230,9 @@ export class Board3D implements Board {
     return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
   }
 
-  /** Todas as peças cabem na tela com margem, considerando a câmera de destino? */
+  /** Todas as peças cabem na tela, considerando a câmera de destino? */
   private allVisible(board: { r: number; c: number }[]): boolean {
-    const cam = this.camera.clone();
-    const { target, dist, pitch } = this.goal;
-    cam.position.set(target.x, Math.sin(pitch) * dist, target.y + Math.cos(pitch) * dist);
-    cam.lookAt(target.x, 0, target.y);
-    cam.updateMatrixWorld();
-    const v = new THREE.Vector3();
-    return board.every((b) =>
-      cellGeometry(b.r, b.c).pts.every((p) => {
-        v.set(p.x, THICK, p.y).project(cam);
-        return Math.abs(v.x) < 0.9 && Math.abs(v.y) < 0.85;
-      }),
-    );
+    return this.projectedBounds(board.flatMap((b) => cellGeometry(b.r, b.c).pts)).fits;
   }
 
   /**

@@ -1,8 +1,8 @@
-// Arrastar as pedras da mão para mudar a ordem (mouse e toque), só fora da vez do jogador.
+// Arrastar as pedras da mão para mudar a ordem (mouse e toque), dentro ou fora da vez.
 // A ordem é local: o servidor não precisa saber.
 
 export interface HandDragOptions {
-  /** O arrasto só começa quando isto devolve true (fora da vez do jogador). */
+  /** O arrasto só começa quando isto devolve true. */
   canDrag(): boolean;
   /** Nova ordem das pedras (ids), quando o jogador solta. */
   onReorder(ids: number[]): void;
@@ -21,6 +21,7 @@ export function enableHandDrag(container: HTMLElement, opts: HandDragOptions): {
 
   container.addEventListener("pointerdown", (e) => {
     const el = (e.target as HTMLElement).closest<HTMLElement>(".hand-tile");
+    dragged = false; // um arrasto anterior que terminou fora da pedra não gerou clique
     if (!el || !opts.canDrag() || e.button > 0) return;
     pending = { el, id: Number(el.dataset.id), x: e.clientX, y: e.clientY, pointerId: e.pointerId };
   });

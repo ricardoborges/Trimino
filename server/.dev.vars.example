@@ -1,0 +1,19 @@
+# Copie para server/.dev.vars (usado pelo `wrangler dev`). Em produção, use `npx wrangler secret put NOME`.
+
+# Login com Google: crie um "OAuth client ID" (aplicativo da Web) no Google Cloud Console e cadastre
+# como URI de redirecionamento <PUBLIC_URL>/auth/google/callback. Sem isso, o botão do Google some.
+# GOOGLE_CLIENT_ID=
+# GOOGLE_CLIENT_SECRET=
+
+# Endereço público do site (usado no redirecionamento do Google). No dev, o do Vite.
+PUBLIC_URL=http://localhost:5173
+
+# Chave da API da DeepSeek usada pelos jogadores IA. Sem ela, os robôs jogam a jogada de maior pontuação.
+# DEEPSEEK_API_KEY=
+# DEEPSEEK_MODEL=deepseek-flash
+
+# STUN/TURN para a videoconferência (separados por vírgula).
+# STUN_URLS=stun:stun.l.google.com:19302
+# TURN_URLS=
+# TURN_USERNAME=
+# TURN_CREDENTIAL=

@@ -39,7 +39,7 @@ export function handTileSvg(vals: Values): SVGSVGElement {
 /** Implementado pelo tabuleiro 2D (SVG, fallback) e pelo 3D (WebGL). */
 export interface Board {
   onCellClick: (r: number, c: number) => void;
-  render(board: BoardCell[], colorOf: (playerId: string) => string, ghosts: Ghost[], lastTile: string | null): void;
+  render(board: BoardCell[], colorOf: (playerId: string) => string, ghosts: Ghost[]): void;
   fit(board: { r: number; c: number }[]): void;
   /** Alterna câmera inclinada / vista de cima; devolve true se ficou de cima. */
   toggleView?(): boolean;
@@ -71,10 +71,10 @@ export class BoardView implements Board {
     new ResizeObserver(() => this.apply()).observe(this.svg);
   }
 
-  render(board: BoardCell[], colorOf: (playerId: string) => string, ghosts: Ghost[], lastTile: string | null): void {
+  render(board: BoardCell[], colorOf: (playerId: string) => string, ghosts: Ghost[]): void {
     this.world.replaceChildren();
     for (const cell of board) {
-      const g = tileShape(corners(cell.r, cell.c), cell.vals, `tile${lastTile === `${cell.r},${cell.c}` ? " last" : ""}`, colorOf(cell.by));
+      const g = tileShape(corners(cell.r, cell.c), cell.vals, "tile", colorOf(cell.by));
       this.world.append(g);
     }
     for (const gh of ghosts) {
@@ -96,10 +96,10 @@ export class BoardView implements Board {
     const pts = (board.length ? board : [{ r: 0, c: 0 }]).flatMap((b) => corners(b.r, b.c));
     const xs = pts.map((p) => p[0]);
     const ys = pts.map((p) => p[1]);
-    const pad = EDGE * 2;
+    const pad = EDGE * 0.6;
     const w = Math.max(...xs) - Math.min(...xs) + pad * 2;
     const h = Math.max(...ys) - Math.min(...ys) + pad * 2;
-    this.cam.k = Math.min(1.6, rect.width / w, rect.height / h);
+    this.cam.k = Math.min(3, rect.width / w, rect.height / h);
     this.cam.x = rect.width / 2 - ((Math.max(...xs) + Math.min(...xs)) / 2) * this.cam.k;
     this.cam.y = rect.height / 2 - ((Math.max(...ys) + Math.min(...ys)) / 2) * this.cam.k;
     this.apply();

@@ -5,7 +5,8 @@
 import { VALUE_COLORS } from "./board3d/textures.ts";
 
 const COLORS = [...VALUE_COLORS.slice(1), "#f2b33d", "#ffffff", "#ff6fae"];
-const DURATION_MS = 3600;
+/** Quanto dura a comemoração inteira (confete caindo e letreiro). */
+export const DURATION_MS = 3600;
 const FIRE_AT_MS = 450; // o disparo coincide com o "tranco" da animação do lançador (CSS)
 const FIRE_MS = 420; // quanto tempo cada lançador fica soltando confete
 const PER_FRAME = 9; // confetes por lançador a cada quadro de ~16 ms enquanto dispara

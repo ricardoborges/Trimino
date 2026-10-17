@@ -3,6 +3,7 @@ package com.example.trimino.net
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -31,7 +32,8 @@ class GameSocket(
     if (closed) return
     ws =
       client.newWebSocket(
-        Request.Builder().url(url).build(),
+        // Cada mesa é um objeto no servidor: a sala vai na URL, além do `join`.
+        Request.Builder().url("$url${if ('?' in url) '&' else '?'}sala=${URLEncoder.encode(join.room, "UTF-8")}").build(),
         object : WebSocketListener() {
           override fun onOpen(webSocket: WebSocket, response: Response) {
             retry = 0

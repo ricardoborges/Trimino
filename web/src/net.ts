@@ -1,6 +1,6 @@
 import type { ClientMessage, ServerMessage } from "@trimino/shared";
 
-/** WebSocket com reconexão automática; reenvia o `join` a cada conexão. */
+/** WebSocket com reconexão automática; reenvia o `join` a cada conexão. A sala vai na URL (cada mesa é um objeto no servidor). */
 export class Connection {
   private ws: WebSocket | null = null;
   private retry = 0;
@@ -15,7 +15,7 @@ export class Connection {
   }
 
   private open(): void {
-    const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
+    const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws?sala=${encodeURIComponent(this.join.room)}`;
     const ws = new WebSocket(url);
     this.ws = ws;
     ws.onopen = () => {

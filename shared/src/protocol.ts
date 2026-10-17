@@ -57,16 +57,64 @@ export interface PlayerInfo {
   out: boolean;
   /** Jogador IA controlado pelo servidor. */
   bot: boolean;
+  /** Está na videoconferência (jogadores sempre; espectadores só com a permissão do anfitrião). */
+  inCall?: boolean;
+  /** Espectador pediu para entrar na videoconferência e aguarda o anfitrião. */
+  callRequested?: boolean;
+  /** Entrou sem conta (convidado). */
+  guest?: boolean;
+}
+
+/** Anotação na folha de pontos: o total do jogador logo depois de pontuar (jogada, passe ou fim de rodada). */
+export interface ScoreMark {
+  round: number;
+  total: number;
+  /** Bônus de quem venceu a rodada. */
+  roundWin?: boolean;
+}
+
+/** Uma jogada de robô no registro de tokens. */
+export interface TokenEntry {
+  round: number;
+  bot: string;
+  /** Pedra jogada e os pontos da jogada. */
+  tile: Values;
+  points: number;
+  /** "ia": o modelo escolheu; "melhor": ficou com a maior pontuação sem chamar o modelo, ou porque ele falhou. */
+  source: "ia" | "melhor";
+  /** Detalhe: "opção 2 de 5", "jogada única", "sem chave", "tempo esgotado"... */
+  note?: string;
+  prompt: number;
+  completion: number;
+  /** Parte de `completion` gasta raciocinando. */
+  reasoning: number;
+  total: number;
+  /** Tempo da chamada ao modelo (0 quando não chamou). */
+  ms: number;
+}
+
+export interface TokenLog {
+  model: string;
+  /** Últimas jogadas (as mais antigas saem da lista, mas continuam somadas em `totals`). */
+  entries: TokenEntry[];
+  totals: { calls: number; prompt: number; completion: number; reasoning: number; total: number };
 }
 
 export interface RoundSummary {
   winnerId: string | null;
   reason: "emptyHand" | "blocked";
+  /** Tudo o que o vencedor ganhou por vencer a rodada (na batida, inclui os +25). */
   points: number;
+  /** Batida: o bônus por bater (+25). */
+  bonus?: number;
+  /** Batida: as pedras que sobraram na mão de cada adversário e a soma delas (para a conferência). */
+  hands?: { playerId: string; tiles: Values[]; sum: number }[];
 }
 
 export interface GameState {
   room: string;
+  /** Nome da mesa, escolhido por quem a criou na varanda. */
+  title?: string;
   phase: Phase;
   round: number;
   targetScore: number;
@@ -79,6 +127,8 @@ export interface GameState {
   roundSummary: RoundSummary | null;
   /** Vencedor da partida, quando ela termina. */
   winnerId: string | null;
+  /** Folha de pontos, como a anotada no papel: uma coluna por jogador, um total a cada vez que ele pontua. */
+  scoreSheet: { playerId: string; marks: ScoreMark[] }[];
   /**
    * Última ponte/mandala da rodada, para destacar as pedras e comemorar.
    * `seq` cresce a cada nova; o cliente só comemora quando vê um `seq` maior que o anterior.
@@ -88,7 +138,13 @@ export interface GameState {
     playerId: string;
     points: number;
     formations: { kind: "ponte" | "mandala"; cells: { r: number; c: number }[] }[];
+    /** A jogada foi a batida (o jogador colocou a última pedra da mão). */
+    batida?: boolean;
   } | null;
+  /** Depois de alguém bater: quem bateu e quem ainda vai jogar a última vez. */
+  finalLap: { batedorId: string; pending: string[] } | null;
+  /** Tokens gastos pelos jogadores IA nesta partida; null quando não há robô na mesa. */
+  tokens: TokenLog | null;
   you: {
     id: string;
     hand: Tile[];
@@ -113,13 +169,28 @@ export type SignalData =
   | { type: "ice"; candidate: string; sdpMid: string | null; sdpMLineIndex: number | null };
 
 export type ClientMessage =
-  | { t: "join"; room: string; name: string; clientId: string }
+  /** `watch`: entra como espectador (só assiste; não ocupa lugar na mesa). */
+  | { t: "join"; room: string; name: string; clientId: string; watch?: boolean }
+  /** Espectador: ocupa um lugar livre (fora de partida). */
+  | { t: "sit" }
+  /** Espectador: pede para entrar na videoconferência. */
+  | { t: "requestCall" }
+  /** Espectador: cancela o pedido ou sai da videoconferência. */
+  | { t: "leaveCall" }
+  /** Anfitrião: aceita ou recusa o pedido de um espectador. */
+  | { t: "answerCall"; id: string; allow: boolean }
+  /** Anfitrião: tira um espectador da videoconferência. */
+  | { t: "endCall"; id: string }
   | { t: "start" }
   | { t: "pickLot"; slot: number }
   | { t: "forfeit" }
   | { t: "addBot" }
   | { t: "removeBot"; id: string }
   | { t: "nextRound" }
+  /** Anfitrião: dá as cartas de novo na rodada atual, desfazendo os pontos dela. */
+  | { t: "restartRound" }
+  /** Anfitrião: começa uma partida nova (novo sorteio, placar zerado) com quem está na mesa. */
+  | { t: "restartGame" }
   | { t: "place"; tileId: number; r: number; c: number; rot: number }
   | { t: "draw" }
   | { t: "pass" }
@@ -127,10 +198,60 @@ export type ClientMessage =
   | { t: "signal"; to: string; data: SignalData };
 
 export type ServerMessage =
-  /** `peers`: membros já conectados. Quem acaba de entrar envia a oferta WebRTC para cada um. */
-  | { t: "welcome"; you: string; room: string; iceServers: IceServer[]; peers: string[] }
+  /**
+   * `peers`: membros já na videoconferência. Quem acaba de entrar envia a oferta WebRTC para cada um.
+   * `inCall`: false para espectadores, que só entram na conversa com a permissão do anfitrião.
+   */
+  | { t: "welcome"; you: string; room: string; iceServers: IceServer[]; peers: string[]; inCall?: boolean }
+  /** Você entrou na videoconferência: envie a oferta para cada um de `peers`. */
+  | { t: "call"; peers: string[] }
+  /** Você saiu da videoconferência (por vontade própria ou pelo anfitrião). */
+  | { t: "callEnded" }
+  /** Aviso para mostrar ao usuário (não é erro). */
+  | { t: "notice"; message: string }
   | { t: "state"; state: GameState }
   | { t: "peerLeft"; id: string }
   | { t: "signal"; from: string; data: SignalData }
   | { t: "chat"; from: string; name: string; text: string }
   | { t: "error"; message: string };
+
+// ---------------- API HTTP (site, varanda e contas) ----------------
+
+/** Usuário da sessão. Convidados não têm conta: só um nome guardado no navegador. */
+export interface UserInfo {
+  id: string;
+  name: string;
+  email: string | null;
+  avatarUrl: string | null;
+}
+
+/** Mesa aberta, como aparece na varanda. */
+export interface MesaSummary {
+  code: string;
+  title: string;
+  phase: Phase;
+  round: number;
+  /** Quem está sentado à mesa, na ordem da vez. */
+  players: { name: string; score: number; bot: boolean; host: boolean; connected: boolean }[];
+  spectators: number;
+  /** Lugares livres para sentar agora (0 durante a partida). */
+  seatsFree: number;
+  updatedAt: number;
+}
+
+/** Estatísticas acumuladas de um jogador com conta (base para o ranking). */
+export interface PlayerStats {
+  matches: number;
+  wins: number;
+  forfeits: number;
+  totalPoints: number;
+  bestScore: number;
+  rounds: number;
+  lastPlayedAt: number | null;
+}
+
+export interface RankingRow extends PlayerStats {
+  userId: string;
+  name: string;
+  avatarUrl: string | null;
+}

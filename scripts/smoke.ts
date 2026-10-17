@@ -1,9 +1,9 @@
 // Partida completa contra um servidor rodando, só pelo protocolo.
-// Uso: npm run smoke   (TRIMINO_WS=ws://localhost:8787/ws para outra porta)
+// Uso: npm run smoke   (TRIMINO_WS=ws://host:porta/ws para outro servidor)
 import { cellKey, cellVertices, edgeNeighbors, rotated, vertexKey, type GameState, type ServerMessage } from "@trimino/shared";
 import WebSocket from "ws";
 
-const url = process.env.TRIMINO_WS ?? "ws://localhost:8080/ws";
+const base = process.env.TRIMINO_WS ?? "ws://localhost:8787/ws";
 const room = "SMOKE" + Math.floor(Math.random() * 1e4);
 
 interface Client {
@@ -13,20 +13,26 @@ interface Client {
   state: GameState | null;
   signals: number;
   errors: string[];
+  /** Na videoconferência (welcome/call/callEnded). */
+  inCall: boolean;
+  notices: string[];
   send(msg: object): void;
 }
 
-function client(name: string): Promise<Client> {
-  const ws = new WebSocket(url);
-  const c: Client = { ws, id: "", peers: [], state: null, signals: 0, errors: [], send: (m) => ws.send(JSON.stringify(m)) };
+function client(name: string, watch = false): Promise<Client> {
+  const ws = new WebSocket(`${base}?sala=${room}`);
+  const c: Client = { ws, id: "", peers: [], state: null, signals: 0, errors: [], inCall: false, notices: [], send: (m) => ws.send(JSON.stringify(m)) };
   ws.on("message", (raw) => {
     const m = JSON.parse(String(raw)) as ServerMessage;
-    if (m.t === "welcome") [c.id, c.peers] = [m.you, m.peers];
+    if (m.t === "welcome") [c.id, c.peers, c.inCall] = [m.you, m.peers, m.inCall ?? true];
+    if (m.t === "call") [c.peers, c.inCall] = [m.peers, true];
+    if (m.t === "callEnded") c.inCall = false;
+    if (m.t === "notice") c.notices.push(m.message);
     if (m.t === "state") c.state = m.state;
     if (m.t === "signal") c.signals++;
     if (m.t === "error") c.errors.push(m.message);
   });
-  return new Promise((r) => ws.on("open", () => (c.send({ t: "join", room, name, clientId: `${name}-smoke-${room}` }), r(c))));
+  return new Promise((r) => ws.on("open", () => (c.send({ t: "join", room, name, clientId: `${name}-smoke-${room}`, watch }), r(c))));
 }
 
 /** O cliente não recebe dicas: calcula sozinho uma jogada que encaixa. */
@@ -93,16 +99,44 @@ for (let i = 0; i < 500 && a.state?.phase === "playing"; i++) {
     cur.send({ t: "pass" });
     passes++;
   }
-  await wait(15);
+  // espera o estado novo antes da próxima ação (senão a próxima decisão usa um estado velho)
+  for (let t = 0; t < 100 && cur.state === s; t++) await wait(10);
 }
 const s = a.state!;
 console.log({ fase: s.phase, pecas: s.board.length, moves, draws, passes, placar: s.players.map((p) => `${p.name}=${p.score}`) });
 check("a rodada termina", s.phase === "roundOver" || s.phase === "gameOver");
-check("nenhum erro durante as jogadas", [...a.errors, ...b.errors].length === 1);
+const playErrors = [...a.errors, ...b.errors].filter((e) => e !== "Só o anfitrião pode iniciar.");
+if (playErrors.length) console.log("erros:", playErrors);
+check("nenhum erro durante as jogadas", playErrors.length === 0);
 
 b.ws.close();
 await wait(200);
 const b2 = await client("Bia");
 await wait(200);
 check("reconexão mantém o assento", b2.id === b.id);
+
+// Espectador: assiste sem entrar na conversa; entra só se o anfitrião liberar.
+const c = await client("Caio", true);
+await wait(300);
+check("espectador entra fora da videoconferência", !c.inCall && c.peers.length === 0);
+check("jogadores veem o espectador na lista", !!a.state?.players.find((p) => p.id === c.id)?.spectator);
+const before = a.signals;
+c.send({ t: "signal", to: a.id, data: { type: "offer", sdp: "x" } });
+await wait(150);
+check("espectador fora da conversa não sinaliza", a.signals === before);
+c.send({ t: "requestCall" });
+await wait(200);
+check("anfitrião é avisado do pedido", a.notices.some((n) => n.includes("Caio")) && !!a.state?.players.find((p) => p.id === c.id)?.callRequested);
+b2.send({ t: "answerCall", id: c.id, allow: true });
+await wait(150);
+check("só o anfitrião libera", b2.errors.at(-1) === "Só o anfitrião pode responder." && !c.inCall);
+a.send({ t: "answerCall", id: c.id, allow: true });
+await wait(200);
+check("liberado, o espectador oferta para os jogadores", c.inCall && c.peers.includes(a.id) && c.peers.includes(b2.id));
+c.send({ t: "signal", to: a.id, data: { type: "offer", sdp: "x" } });
+await wait(150);
+check("na conversa, a sinalização passa", a.signals === before + 1);
+a.send({ t: "endCall", id: c.id });
+await wait(200);
+check("anfitrião tira o espectador da conversa", !c.inCall);
 process.exit();

@@ -3,15 +3,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
-    "start": "tsx --env-file-if-exists=.env src/index.ts"
+    "dev": "wrangler dev",
+    "db:migrate": "wrangler d1 migrations apply trimino --local",
+    "db:migrate:remote": "wrangler d1 migrations apply trimino --remote",
+    "types": "wrangler types",
+    "deploy": "wrangler d1 migrations apply trimino --remote && wrangler deploy"
   },
   "dependencies": {
-    "@trimino/shared": "*",
-    "tsx": "^4.20.6",
-    "ws": "^8.18.3"
+    "@trimino/shared": "*"
   },
   "devDependencies": {
-    "@types/ws": "^8.18.1"
+    "wrangler": "^4.151.1"
   }
 }

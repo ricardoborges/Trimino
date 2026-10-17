@@ -1,0 +1,58 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dev:server",
+      "type": "npm",
+      "script": "dev:server",
+      "isBackground": true,
+      "presentation": { "group": "dev", "reveal": "always" },
+      "problemMatcher": {
+        "owner": "trimino-server",
+        "pattern": { "regexp": "^__nunca__$" },
+        "background": {
+          "activeBegin": true,
+          "beginsPattern": "> .*dev",
+          "endsPattern": "Ready on"
+        }
+      }
+    },
+    {
+      "label": "dev:web",
+      "type": "npm",
+      "script": "dev:web",
+      "isBackground": true,
+      "presentation": { "group": "dev", "reveal": "always" },
+      "problemMatcher": {
+        "owner": "trimino-web",
+        "pattern": { "regexp": "^__nunca__$" },
+        "background": {
+          "activeBegin": true,
+          "beginsPattern": "> .*dev",
+          "endsPattern": "(ready in|Local)"
+        }
+      }
+    },
+    {
+      "label": "dev",
+      "dependsOn": ["dev:server", "dev:web"],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    },
+    {
+      "label": "parar dev",
+      "type": "shell",
+      "command": "echo ${input:terminarTarefas}",
+      "presentation": { "reveal": "never" },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "terminarTarefas",
+      "type": "command",
+      "command": "workbench.action.tasks.terminate",
+      "args": "terminateAll"
+    }
+  ]
+}

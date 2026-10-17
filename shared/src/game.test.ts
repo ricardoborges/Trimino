@@ -23,6 +23,12 @@ function started(seed: number, target = 400): TriminoGame {
   return g;
 }
 
+/** Depois de uma batida: cada adversário passa a última vez (com o monte vazio), encerrando a rodada. */
+function finishLap(g: TriminoGame) {
+  g.pool = [];
+  while (g.finalLap) g.pass(g.current.id);
+}
+
 /** Primeira jogada: qualquer peça da mão na origem. */
 function open(g: TriminoGame) {
   g.place(g.current.id, g.current.hand[0].id, 0, 0, 0);
@@ -110,14 +116,31 @@ describe("TriminoGame", () => {
     }
   });
 
-  it("as rodadas seguintes começam com o próximo jogador", () => {
+  it("as rodadas seguintes começam com quem tem menos pontos", () => {
     const g = started(11, 10_000);
     const first = g.current.id;
     g.current.hand = [g.current.hand[0]];
-    open(g);
+    open(g); // quem bateu fica com mais pontos
+    finishLap(g);
     expect(g.phase).toBe("roundOver");
     g.startRound();
     expect(g.current.id).not.toBe(first);
+  });
+
+  it("menor pontuação abre a rodada; no empate, o primeiro na ordem da vez depois de quem abriu a anterior", () => {
+    const three = [{ id: "a", name: "Ana" }, { id: "b", name: "Bia" }, { id: "c", name: "Caio" }];
+    const g = new TriminoGame(three, 10_000, seeded(3));
+    g.players.forEach((p, i) => g.pickLot(p.id, i));
+    g.beginFirstRound();
+    const set = (a: number, b: number, c: number) => g.players.forEach((p, i) => (p.score = [a, b, c][i]));
+    set(30, 5, 12);
+    g.phase = "roundOver";
+    g.startRound();
+    expect(g.current.id).toBe("b");
+    set(7, 20, 7); // empate entre Ana e Caio; a anterior foi aberta por Bia → Caio vem primeiro
+    g.phase = "roundOver";
+    g.startRound();
+    expect(g.current.id).toBe("c");
   });
 
   it("toda jogada válida é aceita e respeita os cantos", () => {
@@ -188,6 +211,37 @@ describe("TriminoGame", () => {
     expect(g.current.id).not.toBe(p.id);
   });
 
+  it("anota o total na folha de pontos a cada jogada e passe", () => {
+    const g = started(5);
+    const opener = g.current;
+    open(g);
+    expect(opener.marks).toEqual([{ round: 1, total: opener.score }]);
+    const p = g.current;
+    g.draw(p.id); g.draw(p.id); g.draw(p.id);
+    expect(p.marks).toEqual([]); // comprar não anota: o desconto vem junto com a jogada ou o passe
+    g.pass(p.id);
+    expect(p.marks).toEqual([{ round: 1, total: p.score }]);
+  });
+
+  it("reiniciar a rodada desfaz os pontos dela e dá as cartas de novo, com o mesmo jogador abrindo", () => {
+    const g = started(5);
+    const starter = g.current.id;
+    open(g);
+    const p = g.current;
+    g.draw(p.id); g.draw(p.id); g.draw(p.id);
+    g.pass(p.id);
+    expect(g.players.some((x) => x.score !== 0)).toBe(true);
+    g.restartRound();
+    expect(g.round).toBe(1);
+    expect(g.board.size).toBe(0);
+    expect(g.current.id).toBe(starter);
+    for (const x of g.players) {
+      expect(x.score).toBe(0);
+      expect(x.marks).toEqual([]);
+      expect(x.hand).toHaveLength(9);
+    }
+  });
+
   it("ponte: 40 + a soma da pedra jogada", () => {
     // (0,0) encosta por aresta em (0,-1); o canto oposto (2,1) toca (0,2), que não é vizinha por aresta.
     const g = started(4, 10_000);
@@ -205,6 +259,30 @@ describe("TriminoGame", () => {
     const cells = res.formations[0].cells.map((x) => `${x.r},${x.c}`);
     expect(cells).toEqual(expect.arrayContaining(["0,0", "0,-1", "0,2"]));
     expect(g.celebration).toMatchObject({ seq: 1, playerId: p.id, points: 43 });
+  });
+
+  it("ponte: o canto que encosta só pela ponta não precisa bater (regra da casa)", () => {
+    // Mesma montagem da ponte acima, mas a peça do canto (0,2) tem 4 onde a nova tem 1.
+    const g = started(4, 10_000);
+    for (const [r, c, n] of [[0, -1, 1], [0, 2, 4]]) {
+      g.board.set(`${r},${c}`, { r, c, vals: [n, n, n], tileId: -1, by: "x" });
+      for (const v of cellVertices(r, c)) g.vertices.set(vertexKey(...v), n);
+    }
+    const p = g.current;
+    const tile = fullSet().find((t) => t.v.join() === "1,1,1")!;
+    p.hand = [tile, fullSet()[0]];
+    const res = g.place(p.id, tile.id, 0, 0, 0);
+    expect(res.bonuses).toEqual(["ponte +40"]);
+  });
+
+  it("os cantos divididos com a vizinha por aresta continuam tendo que bater", () => {
+    const g = started(4, 10_000);
+    g.board.set("0,-1", { r: 0, c: -1, vals: [2, 2, 2], tileId: -1, by: "x" });
+    for (const v of cellVertices(0, -1)) g.vertices.set(vertexKey(...v), 2);
+    const p = g.current;
+    const tile = fullSet().find((t) => t.v.join() === "1,1,1")!;
+    p.hand = [tile, fullSet()[0]];
+    expect(() => g.place(p.id, tile.id, 0, 0, 0)).toThrow("não encaixa");
   });
 
   it("dá bônus de mandala ao fechar seis peças ao redor de um vértice", () => {
@@ -226,14 +304,51 @@ describe("TriminoGame", () => {
     expect(res.points).toBe(50 + 0); // 50 + a soma da pedra (0-0-0)
   });
 
-  it("esvaziar a mão encerra a rodada com bônus", () => {
+  it("batida: +25 na hora, os outros jogam uma última vez e as pedras da mão são acertadas", () => {
     const g = started(11, 10_000);
     const p = g.current;
     p.hand = [p.hand[0]];
+    const tilePoints = p.hand[0].v.reduce((a, b) => a + b, 0);
     open(g);
+    expect(p.score).toBe(tilePoints + SCORE.emptyHand);
+    expect(g.celebration).toMatchObject({ playerId: p.id, batida: true, points: tilePoints + SCORE.emptyHand });
+    expect(g.phase).toBe("playing"); // ainda falta a última vez do adversário
+    const other = g.current;
+    expect(other.id).not.toBe(p.id);
+    expect(g.finalLap).toEqual({ batedorId: p.id, pending: [other.id] });
+
+    other.hand = [{ id: 98, v: [1, 2, 3] }, { id: 99, v: [0, 0, 4] }];
+    g.pool = [];
+    g.pass(other.id); // monte vazio: pode passar direto (−10)
     expect(g.phase).toBe("roundOver");
-    expect(g.roundSummary?.winnerId).toBe(p.id);
-    expect(g.roundSummary!.points).toBeGreaterThanOrEqual(SCORE.emptyHand);
+    expect(other.score).toBe(-SCORE.passPenalty - 10);
+    expect(p.score).toBe(tilePoints + SCORE.emptyHand + 10);
+    expect(g.roundSummary).toMatchObject({
+      winnerId: p.id,
+      reason: "emptyHand",
+      points: SCORE.emptyHand + 10,
+      bonus: SCORE.emptyHand,
+      hands: [{ playerId: other.id, tiles: [[1, 2, 3], [0, 0, 4]], sum: 10 }],
+    });
+    expect(p.marks.at(-1)).toEqual({ round: 1, total: p.score, roundWin: true });
+  });
+
+  it("na última volta, cada adversário joga uma vez na ordem da vez", () => {
+    const three = [{ id: "a", name: "Ana" }, { id: "b", name: "Bia" }, { id: "c", name: "Caio" }];
+    const g = new TriminoGame(three, 10_000, seeded(3));
+    g.players.forEach((p, i) => g.pickLot(p.id, i));
+    g.beginFirstRound();
+    const order = [0, 1, 2].map((k) => g.players[(g.turn + k) % 3].id);
+    g.current.hand = [g.current.hand[0]];
+    open(g);
+    expect(g.finalLap!.pending).toEqual(order.slice(1));
+    g.pool = [];
+    g.pass(order[1]);
+    expect(g.phase).toBe("playing");
+    expect(g.current.id).toBe(order[2]);
+    g.pass(order[2]);
+    expect(g.phase).toBe("roundOver");
+    expect(g.finalLap).toBeNull();
   });
 
   describe("desistência", () => {
@@ -291,6 +406,7 @@ describe("TriminoGame", () => {
       g.forfeit("b");
       g.current.hand = [g.current.hand[0]];
       open(g);
+      finishLap(g);
       expect(g.phase).toBe("roundOver");
       for (let r = 0; r < 3; r++) {
         g.startRound();
@@ -298,6 +414,7 @@ describe("TriminoGame", () => {
         expect(g.player("b")!.hand).toHaveLength(0);
         g.current.hand = [g.current.hand[0]];
         open(g);
+        finishLap(g);
       }
     });
   });

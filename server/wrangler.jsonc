@@ -1,0 +1,31 @@
+// Triminó na Cloudflare: Worker (API, login e WebSocket), Durable Objects (uma mesa por objeto)
+// e D1 (contas, sessões, lista da varanda e estatísticas). O cliente compilado (web/dist) sai como assets.
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "trimino",
+  "main": "src/worker.ts",
+  "compatibility_date": "2025-10-01",
+  // nodejs_compat também preenche process.env com as variáveis e secrets (usado pela IA).
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "../web/dist",
+    "binding": "ASSETS",
+    // Rotas como /varanda e /mesa/ABCDE caem no index.html; API, login e WebSocket vão para o Worker.
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/auth/*", "/ws"]
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "MESA", "class_name": "Mesa" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Mesa"] }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "trimino",
+      // Troque pelo id que `npx wrangler d1 create trimino` mostrar (o dev local funciona com qualquer valor).
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "observability": { "enabled": true }
+}

@@ -16,11 +16,16 @@
     "test": "vitest run",
     "typecheck": "tsc -p shared && tsc -p server && tsc -p web",
     "smoke": "tsx scripts/smoke.ts",
-    "fixtures": "node scripts/capture-fixtures.mjs"
+    "fixtures": "node scripts/capture-fixtures.mjs",
+    "deploy": "npm run build && npm run deploy -w server",
+    "db:migrate": "npm run db:migrate -w server"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/ws": "^8.18.2",
+    "tsx": "^4.23.15",
     "typescript": "~5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "ws": "^8.22.0"
   }
 }

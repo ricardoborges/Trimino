@@ -8,36 +8,167 @@
     <title>Triminó</title>
   </head>
   <body>
-    <div id="lobby" class="lobby">
-      <form id="join-form" class="card">
-        <div class="logo" aria-hidden="true">
-          <svg viewBox="0 0 64 56"><path d="M32 2 62 54H2Z" /></svg>
+    <!-- Site: landing (/), varanda (/varanda). A mesa (/mesa/CODIGO) é o #app. -->
+    <div id="site" class="site" hidden>
+      <!-- ---------- landing ---------- -->
+      <div id="landing" class="landing" hidden>
+        <nav class="site-nav">
+          <a href="/" class="site-brand"><svg viewBox="0 0 64 56" aria-hidden="true"><path d="M32 2 62 54H2Z" /></svg>Triminó</a>
+          <a href="#entrar" class="chip nav-cta">Entrar</a>
+        </nav>
+
+        <header class="hero">
+          <div class="hero-copy">
+            <p class="eyebrow">Dominó triangular · 2 a 4 jogadores</p>
+            <h1>O jogo da mesa de casa, agora com todo mundo junto.</h1>
+            <p class="lead">
+              Monte pontes e mandalas, bata primeiro e veja a cara de quem ficou com a mão cheia.
+              Vídeo e áudio direto na mesa, para jogar com a família e os amigos de qualquer lugar.
+            </p>
+            <div class="hero-tiles" id="hero-tiles" aria-hidden="true"></div>
+          </div>
+
+          <section id="entrar" class="card auth-card" aria-label="Entrar">
+            <!-- Quem já entrou (conta ou convidado) vê só o atalho para a varanda. -->
+            <div id="auth-welcome" class="auth-welcome" hidden>
+              <h2>Olá, <span id="auth-welcome-name"></span>!</h2>
+              <p class="muted">Tem mesa armada na varanda.</p>
+              <a href="/varanda" class="primary button-link" data-link>Ir para a varanda</a>
+              <button id="auth-switch" class="link-button">Entrar com outra conta</button>
+            </div>
+
+            <div id="auth-forms">
+              <p id="auth-invite" class="auth-invite" hidden></p>
+              <div class="tabs" role="tablist">
+                <button role="tab" class="tab active" data-tab="login" aria-selected="true">Entrar</button>
+                <button role="tab" class="tab" data-tab="signup" aria-selected="false">Criar conta</button>
+                <button role="tab" class="tab" data-tab="guest" aria-selected="false">Convidado</button>
+              </div>
+
+              <div id="google-block">
+                <a href="/auth/google" id="google-login" class="google-button">
+                  <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/></svg>
+                  Continuar com o Google
+                </a>
+                <div class="divider"><span>ou</span></div>
+              </div>
+
+              <form id="login-form" class="auth-form" data-panel="login">
+                <label>E-mail <input name="email" type="email" required autocomplete="email" /></label>
+                <label>Senha <input name="password" type="password" required autocomplete="current-password" /></label>
+                <button type="submit" class="primary">Entrar</button>
+              </form>
+
+              <form id="signup-form" class="auth-form" data-panel="signup" hidden>
+                <label>Seu nome <input name="name" maxlength="24" required autocomplete="nickname" /></label>
+                <label>E-mail <input name="email" type="email" required autocomplete="email" /></label>
+                <label>Senha <input name="password" type="password" minlength="8" required autocomplete="new-password" /></label>
+                <p class="hint">Pelo menos 8 caracteres. Com conta, suas partidas entram nas estatísticas e no ranking.</p>
+                <button type="submit" class="primary">Criar conta</button>
+              </form>
+
+              <form id="guest-form" class="auth-form" data-panel="guest" hidden>
+                <label>Como quer ser chamado? <input name="name" maxlength="24" required autocomplete="nickname" /></label>
+                <p class="hint">Sem cadastro. Convidados jogam normalmente, mas as partidas não contam para o ranking.</p>
+                <button type="submit" class="primary">Entrar como convidado</button>
+              </form>
+              <p id="auth-error" class="form-error" role="alert"></p>
+            </div>
+          </section>
+        </header>
+
+        <section class="features" aria-label="O que tem no Triminó">
+          <article><span class="feature-icon">🎥</span><h3>Vídeo na mesa</h3><p>Câmera e microfone de cada jogador ao lado do tabuleiro. Ninguém precisa abrir outro aplicativo.</p></article>
+          <article><span class="feature-icon">🪑</span><h3>A varanda</h3><p>Veja as mesas abertas e quem está jogando em cada uma. Sente numa mesa livre ou arme a sua.</p></article>
+          <article><span class="feature-icon">👀</span><h3>Assista partidas</h3><p>Entre como espectador numa partida em andamento. Se quiser conversar, peça e o anfitrião libera.</p></article>
+          <article><span class="feature-icon">🤖</span><h3>Jogadores IA</h3><p>Faltou gente? Complete a mesa com Ricardo, Ilana e Henrique, os robôs da casa.</p></article>
+          <article><span class="feature-icon">📊</span><h3>Estatísticas</h3><p>Partidas, vitórias e pontuações ficam guardadas na sua conta, prontas para o ranking.</p></article>
+          <article><span class="feature-icon">📲</span><h3>Chame pelo WhatsApp</h3><p>Mande o link da mesa direto para o grupo da família. Quem abrir já cai na sua mesa.</p></article>
+        </section>
+
+        <section class="rules" aria-label="Como se joga">
+          <h2>Como se joga</h2>
+          <ol>
+            <li><b>Encaixe as pontas.</b> Cada pedra tem três números; os cantos que encostam precisam bater.</li>
+            <li><b>Ponte vale 40, mandala vale 50.</b> Feche o círculo de seis pedras em volta de um ponto e comemore.</li>
+            <li><b>Bata primeiro.</b> Quem se livra da última pedra ganha +25 e leva os pontos que sobraram na mão dos outros.</li>
+          </ol>
+          <a href="#entrar" class="primary button-link">Quero jogar</a>
+        </section>
+
+        <footer class="site-footer">Triminó · feito para jogar com quem a gente gosta</footer>
+      </div>
+
+      <!-- ---------- varanda ---------- -->
+      <div id="varanda" class="varanda" hidden>
+        <nav class="site-nav">
+          <a href="/" class="site-brand" data-link><svg viewBox="0 0 64 56" aria-hidden="true"><path d="M32 2 62 54H2Z" /></svg>Triminó</a>
+          <span class="nav-title">Varanda</span>
+          <span id="me-chip" class="me-chip"></span>
+          <button id="logout" class="chip">Sair</button>
+        </nav>
+
+        <div class="varanda-grid">
+          <aside class="varanda-side">
+            <form id="create-form" class="card panel-card">
+              <h2>Armar uma mesa</h2>
+              <label>Nome da mesa <input name="title" maxlength="40" placeholder="Mesa da vó" /></label>
+              <label class="check"><input type="checkbox" name="private" /> Mesa privada (só entra quem tiver o link)</label>
+              <button type="submit" class="primary">Criar mesa</button>
+            </form>
+
+            <form id="code-form" class="card panel-card">
+              <h2>Tenho um código</h2>
+              <label>Código da mesa <input name="code" maxlength="12" required autocapitalize="characters" placeholder="ABCDE" /></label>
+              <div class="row">
+                <button type="submit" name="mode" value="play" class="primary">Sentar</button>
+                <button type="submit" name="mode" value="watch" class="secondary">Assistir</button>
+              </div>
+            </form>
+
+            <label class="check media-pref"><input type="checkbox" id="media-pref" /> Entrar nas mesas com câmera e microfone</label>
+
+            <section id="stats-card" class="card panel-card stats-card" aria-label="Suas estatísticas"></section>
+            <section id="ranking-card" class="card panel-card ranking-card" aria-label="Ranking" hidden>
+              <h2>Ranking</h2>
+              <ol id="ranking" class="ranking"></ol>
+            </section>
+          </aside>
+
+          <main class="mesas-wrap">
+            <header class="mesas-head">
+              <h1>Mesas abertas</h1>
+              <span id="mesas-count" class="muted"></span>
+            </header>
+            <div id="mesas" class="mesas" aria-live="polite"></div>
+          </main>
         </div>
-        <h1>Triminó</h1>
-        <p class="sub">Dominó triangular com vídeo, para 2 a 4 jogadores.</p>
-        <label>Seu nome <input name="name" maxlength="24" required autocomplete="nickname" /></label>
-        <label>Código da sala <input name="room" maxlength="12" required autocapitalize="characters" /></label>
-        <p class="hint">Para jogarem juntos, todos precisam usar o mesmo código.</p>
-        <label class="check"><input type="checkbox" name="media" checked /> Entrar com câmera e microfone</label>
-        <button type="submit" class="primary">Entrar</button>
-      </form>
+      </div>
     </div>
 
     <div id="app" class="app" hidden>
       <header class="topbar">
         <strong class="brand">Triminó</strong>
-        <button id="room-code" class="chip" title="Copiar link da sala"></button>
+        <button id="room-code" class="chip" title="Copiar link da mesa"></button>
+        <a id="share-wa" class="chip wa" target="_blank" rel="noopener" title="Chamar pelo WhatsApp"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.1-1.2l-.5-.3Z"/></svg><span class="label"> WhatsApp</span></a>
+        <button id="watchers-toggle" class="chip" title="Espectadores" aria-expanded="false" aria-controls="watchers-panel">👁<span id="watchers-count">0</span></button>
         <button id="log-toggle" class="chip" title="Histórico da partida" aria-expanded="false" aria-controls="log-panel">📜<span class="label"> Histórico</span></button>
+        <button id="sheet-toggle" class="chip" title="Folha de pontos" aria-expanded="false" aria-controls="sheet-panel">📋<span class="label"> Pontos</span></button>
+        <button id="tokens-toggle" class="chip" title="Tokens gastos pelos jogadores IA" aria-expanded="false" aria-controls="tokens-panel" hidden>🪙<span class="label"> Tokens</span></button>
         <span id="status" class="status"></span>
         <ol id="scores" class="scores"></ol>
+        <button id="restart" class="chip" title="Reiniciar a rodada ou a partida" aria-expanded="false" aria-controls="restart-menu" hidden>↻<span class="label"> Reiniciar</span></button>
         <button id="leave" class="chip leave" title="Sair da partida">Sair</button>
       </header>
 
       <main class="main">
         <section id="table" class="table">
           <div id="banner" class="banner"></div>
+          <div id="notice" class="notice" role="status"></div>
+          <div id="seats" class="seats" hidden></div>
           <div class="table-tools">
             <span id="pool" class="chip"></span>
+            <button id="seats-toggle" class="chip" title="Mostrar os adversários e quantas pedras cada um tem" aria-pressed="false">👥 Adversários</button>
             <button id="view" class="chip" title="Alternar vista de cima / inclinada">3D</button>
             <button id="fit" class="chip" title="Centralizar tabuleiro">⤢</button>
           </div>
@@ -49,6 +180,7 @@
           <div class="media-tools">
             <button id="mic" class="tool">🎤</button>
             <button id="cam" class="tool">📷</button>
+            <button id="call-request" class="secondary call-request" hidden>✋ Pedir para entrar na conversa</button>
           </div>
           <ul id="chat-log" class="log" aria-label="Chat"></ul>
           <form id="chat-form" class="chat">
@@ -63,6 +195,36 @@
           <button id="log-close" class="chip" title="Fechar">✕</button>
         </header>
         <ul id="log" class="log"></ul>
+      </section>
+
+      <section id="watchers-panel" class="log-panel watchers-panel" hidden aria-label="Espectadores">
+        <header>
+          <strong>Espectadores</strong>
+          <button id="watchers-close" class="chip" title="Fechar">✕</button>
+        </header>
+        <ul id="watchers" class="watchers"></ul>
+      </section>
+
+      <section id="tokens-panel" class="log-panel tokens-panel" hidden aria-label="Tokens dos jogadores IA">
+        <header>
+          <strong>Tokens dos jogadores IA</strong>
+          <button id="tokens-close" class="chip" title="Fechar">✕</button>
+        </header>
+        <div id="tokens-summary" class="tokens-summary"></div>
+        <ol id="tokens" class="tokens"></ol>
+      </section>
+
+      <div id="restart-menu" class="menu" hidden>
+        <button id="restart-round" class="secondary">Reiniciar rodada</button>
+        <button id="restart-game" class="secondary">Reiniciar partida</button>
+      </div>
+
+      <section id="sheet-panel" class="log-panel sheet-panel" hidden aria-label="Folha de pontos">
+        <header>
+          <strong>Folha de pontos</strong>
+          <button id="sheet-close" class="chip" title="Fechar">✕</button>
+        </header>
+        <div id="sheet" class="sheet"></div>
       </section>
 
       <footer class="dock">
