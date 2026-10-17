@@ -86,9 +86,18 @@ export class Room {
     return [...this.members.values()].filter((m) => (m.ws || m.bot) && !m.watch).length;
   }
 
-  /** Esta identidade já tem lugar na mesa (reconexão). */
-  hasClient(clientId: string): boolean {
-    return [...this.members.values()].some((m) => m.clientId === clientId);
+  /**
+   * Quem volta para a mesa: a mesma aba (`clientId`) ou, se o lugar estiver vago, quem fechou a aba ou o
+   * navegador sem querer (`resume`, guardado no navegador) ou entrou com a mesma conta.
+   * Lugar ocupado por outra conexão não é tomado: duas abas abertas continuam sendo duas pessoas.
+   */
+  returning(clientId: string, resume?: string, userId?: string): Member | undefined {
+    const members = [...this.members.values()].filter((m) => !m.bot);
+    return (
+      members.find((m) => m.clientId === clientId) ??
+      (resume ? members.find((m) => !m.ws && m.clientId === resume) : undefined) ??
+      (userId ? members.find((m) => !m.ws && m.userId === userId) : undefined)
+    );
   }
 
   get humansConnected(): number {
@@ -107,11 +116,12 @@ export class Room {
     return [...this.members.values()].filter((m) => m !== except && m.inCall && m.ws).map((m) => m.id);
   }
 
-  join(ws: Socket, name: string, clientId: string, opts: { watch?: boolean; userId?: string; admin?: boolean } = {}): Member {
-    let member = [...this.members.values()].find((m) => m.clientId === clientId);
+  join(ws: Socket, name: string, clientId: string, opts: { watch?: boolean; userId?: string; admin?: boolean; resume?: string } = {}): Member {
+    let member = this.returning(clientId, opts.resume, opts.userId);
     if (member) {
       member.ws?.close(4000, "Conectado em outro lugar");
       member.ws = ws;
+      member.clientId = clientId;
       member.name = name || member.name;
       member.admin = !!opts.admin;
     } else {
@@ -183,6 +193,18 @@ export class Room {
           const game = this.requireGame();
           game.forfeit(member.id);
           this.beginAfterLottery(game);
+          break;
+        }
+        case "removePlayer": {
+          if (member.id !== this.hostId) throw new RuleError("Só o anfitrião pode tirar alguém da partida.");
+          if (msg.id === member.id) throw new RuleError("Para sair, use o botão Sair.");
+          const game = this.requireGame();
+          const target = game.player(msg.id);
+          if (!target || target.out) throw new RuleError("Este jogador não está na partida.");
+          game.forfeit(target.id, member.name);
+          this.beginAfterLottery(game);
+          const ws = this.members.get(target.id)?.ws;
+          if (ws) send(ws, { t: "notice", message: `${member.name} tirou você da partida.` });
           break;
         }
         case "nextRound":
@@ -445,11 +467,15 @@ export class Room {
     }
   }
 
-  /** Avisa o fim da partida (uma vez por partida) para registrar as estatísticas. */
+  /**
+   * Avisa o fim da partida (uma vez por partida) para registrar as estatísticas.
+   * Só conta partida concluída (alguém chegou à meta): se acabou porque os outros desistiram, não vale para o ranking.
+   */
   private recordResult(): void {
     const g = this.game;
     if (!g || g.phase !== "gameOver" || this.recorded === g) return;
     this.recorded = g;
+    if (g.endedByForfeit) return;
     const ranked = [...g.players].sort((a, b) => b.score - a.score);
     const winnerId = g.winnerId ?? ranked[0]?.id ?? null;
     this.onGameOver?.({

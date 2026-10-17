@@ -86,6 +86,8 @@ export class TriminoGame {
   roundSummary: RoundSummary | null = null;
   /** Vencedor da partida (definido no fim do jogo). */
   winnerId: string | null = null;
+  /** A partida acabou porque os outros desistiram, não porque alguém chegou à meta. */
+  endedByForfeit = false;
   /** Última ponte/mandala; `seq` cresce a cada uma para o cliente comemorar uma vez só. */
   celebration: Celebration | null = null;
   /**
@@ -441,7 +443,7 @@ export class TriminoGame {
    * Jogador desiste: sai das rodadas, as peças da mão voltam para o monte e a partida segue com os demais.
    * Se sobrar um só, ele vence.
    */
-  forfeit(playerId: string): void {
+  forfeit(playerId: string, removedBy?: string): void {
     const p = this.player(playerId);
     if (!p || p.out) throw new RuleError("Você não está nesta partida.");
     if (this.phase === "gameOver") throw new RuleError("A partida já terminou.");
@@ -455,10 +457,11 @@ export class TriminoGame {
         [this.pool[i], this.pool[j]] = [this.pool[j], this.pool[i]];
       }
     }
-    this.addLog({ actor: p.name, action: "desistiu da partida" });
+    this.addLog(removedBy ? { actor: p.name, action: `foi tirado da partida por ${removedBy}` } : { actor: p.name, action: "desistiu da partida" });
 
     const active = this.active;
     if (active.length === 1) {
+      this.endedByForfeit = true;
       this.finish(active[0], "os outros jogadores desistiram");
       return;
     }

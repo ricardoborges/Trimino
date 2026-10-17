@@ -39,7 +39,7 @@ function guestOpens(code: string): Promise<number> {
   return new Promise((r) => ws.on("close", (c) => r(c)));
 }
 
-function client(name: string, watch = false, cookie?: string): Promise<Client> {
+function client(name: string, watch = false, cookie?: string, ids: { clientId?: string; resume?: string } = {}): Promise<Client> {
   const ws = new WebSocket(`${base}?sala=${room}`, cookie ? { headers: { cookie } } : {});
   const c: Client = { ws, id: "", peers: [], state: null, signals: 0, errors: [], inCall: false, notices: [], send: (m) => ws.send(JSON.stringify(m)) };
   ws.on("message", (raw) => {
@@ -52,7 +52,7 @@ function client(name: string, watch = false, cookie?: string): Promise<Client> {
     if (m.t === "signal") c.signals++;
     if (m.t === "error") c.errors.push(m.message);
   });
-  return new Promise((r) => ws.on("open", () => (c.send({ t: "join", room, name, clientId: `${name}-smoke-${room}`, watch }), r(c))));
+  return new Promise((r) => ws.on("open", () => (c.send({ t: "join", room, name, clientId: ids.clientId ?? `${name}-smoke-${room}`, resume: ids.resume, watch }), r(c))));
 }
 
 /** O cliente não recebe dicas: calcula sozinho uma jogada que encaixa. */
@@ -81,7 +81,8 @@ const guestCreate = await fetch(`${http}/api/mesas`, { method: "POST", headers: 
 check("convidado não arma mesa pela API", guestCreate.status === 403);
 check("convidado não abre mesa vazia pelo WebSocket", (await guestOpens(room + "X")) === 4003);
 
-const a = await client("Ana", false, await account("Ana"));
+const anaCookie = await account("Ana");
+let a = await client("Ana", false, anaCookie);
 await wait(200);
 const b = await client("Bia");
 await wait(200);
@@ -139,9 +140,27 @@ check("nenhum erro durante as jogadas", playErrors.length === 0);
 
 b.ws.close();
 await wait(200);
-const b2 = await client("Bia");
+let b2 = await client("Bia");
 await wait(200);
 check("reconexão mantém o assento", b2.id === b.id);
+
+// Fechou a aba ou o navegador sem querer: a aba nova tem outro clientId, mas traz o anterior em `resume`.
+b2.ws.close();
+await wait(200);
+b2 = await client("Bia", false, undefined, { clientId: `bia-nova-aba-${room}`, resume: `Bia-smoke-${room}` });
+await wait(200);
+check("convidado que fechou a aba volta para o mesmo assento", b2.id === b.id);
+const intruso = await client("Bia", false, undefined, { clientId: `bia-outra-aba-${room}`, resume: `bia-nova-aba-${room}` });
+await wait(200);
+check("outra aba não toma um assento ocupado", intruso.id !== b.id && b2.ws.readyState === WebSocket.OPEN);
+intruso.ws.close();
+// Com conta, basta entrar de novo com ela (qualquer aba ou aparelho), se o lugar estiver vago.
+const anaId = a.id;
+a.ws.close();
+await wait(200);
+a = await client("Ana", false, anaCookie, { clientId: `ana-outro-aparelho-${room}` });
+await wait(200);
+check("quem tem conta volta para o mesmo assento", a.id === anaId);
 
 // Espectador: assiste sem entrar na conversa; entra só se o anfitrião liberar.
 const c = await client("Caio", true);
@@ -167,4 +186,13 @@ check("na conversa, a sinalização passa", a.signals === before + 1);
 a.send({ t: "endCall", id: c.id });
 await wait(200);
 check("anfitrião tira o espectador da conversa", !c.inCall);
+
+// Anfitrião tira um jogador da partida (ex.: sumiu sem avisar).
+b2.send({ t: "removePlayer", id: a.id });
+await wait(150);
+check("só o anfitrião tira jogador da partida", b2.errors.at(-1) === "Só o anfitrião pode tirar alguém da partida.");
+a.send({ t: "removePlayer", id: b2.id });
+await wait(200);
+check("jogador tirado pelo anfitrião fica fora", !!a.state?.players.find((p) => p.id === b2.id)?.out && b2.notices.some((n) => n.includes("tirou você")));
+check("sobrou um: a partida acaba", a.state?.phase === "gameOver");
 process.exit();

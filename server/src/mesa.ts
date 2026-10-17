@@ -78,14 +78,15 @@ export class Mesa extends DurableObject<Env> {
         if (member) return;
         const clientId = String(msg.clientId ?? "").slice(0, 64);
         if (clientId.length < 8) return send(ws, { t: "error", message: "clientId inválido." });
+        const resume = typeof msg.resume === "string" ? msg.resume.slice(0, 64) : undefined;
         // Convidado não arma mesa: só entra (ou volta) numa que já tem gente sentada.
-        if (!visitor.userId && room.humansConnected === 0 && !room.hasClient(clientId)) {
+        if (!visitor.userId && room.humansConnected === 0 && !room.returning(clientId, resume)) {
           ws.close(GUEST_REFUSED, "Esta mesa não está aberta. Convidados só entram em mesas com alguém jogando.");
           return;
         }
         // Com conta, o nome é o da conta; convidado escolhe o seu.
         const name = visitor.userId ? humanName(visitor.name) : humanName(msg.name);
-        member = room.join(ws, name, clientId, { watch: !!msg.watch, userId: visitor.userId, admin: !!visitor.admin });
+        member = room.join(ws, name, clientId, { watch: !!msg.watch, userId: visitor.userId, admin: !!visitor.admin, resume });
         send(ws, {
           t: "welcome",
           you: member.id,

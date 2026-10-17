@@ -172,7 +172,8 @@ export type SignalData =
 
 export type ClientMessage =
   /** `watch`: entra como espectador (só assiste; não ocupa lugar na mesa). */
-  | { t: "join"; room: string; name: string; clientId: string; watch?: boolean }
+  /** `resume`: identidade usada antes nesta mesa (aba fechada sem querer); o servidor devolve o lugar se ele estiver vago. */
+  | { t: "join"; room: string; name: string; clientId: string; resume?: string; watch?: boolean }
   /** Espectador: ocupa um lugar livre (fora de partida). */
   | { t: "sit" }
   /** Espectador: pede para entrar na videoconferência. */
@@ -186,6 +187,8 @@ export type ClientMessage =
   | { t: "start" }
   | { t: "pickLot"; slot: number }
   | { t: "forfeit" }
+  /** Anfitrião tira um jogador da partida (ex.: ficou offline): conta como desistência, e a vez passa se for dele. */
+  | { t: "removePlayer"; id: string }
   | { t: "addBot" }
   | { t: "removeBot"; id: string }
   | { t: "nextRound" }

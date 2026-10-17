@@ -381,12 +381,24 @@ describe("TriminoGame", () => {
       expect(() => g.forfeit(quitter.id)).toThrow();
     });
 
+    it("tirado pelo anfitrião na vez dele: a vez passa e o histórico diz quem tirou", () => {
+      const g = startedWith(three, 21);
+      open(g);
+      const gone = g.current;
+      g.forfeit(gone.id, "Ana");
+      expect(gone.out).toBe(true);
+      expect(g.current.id).not.toBe(gone.id);
+      expect(g.phase).toBe("playing");
+      expect(g.log.at(-1)?.action).toBe("foi tirado da partida por Ana");
+    });
+
     it("se sobra um só jogador, ele vence a partida", () => {
       const g = started(5);
       const stays = g.players.find((p) => p.id !== g.current.id)!;
       g.forfeit(g.current.id);
       expect(g.phase).toBe("gameOver");
       expect(g.winnerId).toBe(stays.id);
+      expect(g.endedByForfeit).toBe(true); // não conta para o ranking
     });
 
     it("durante o sorteio, o sorteio termina só com quem ficou", () => {

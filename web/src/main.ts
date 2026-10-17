@@ -28,6 +28,18 @@ function clientId(): string {
   return id;
 }
 
+/**
+ * Última identidade usada em cada mesa, no localStorage: se a aba ou o navegador fechar sem querer,
+ * quem volta para a mesa recupera o lugar (o servidor só devolve se ele estiver vago).
+ */
+const seatKey = (room: string) => `trimino.seat.${room}`;
+function lastSeat(room: string): string | undefined {
+  try { return localStorage.getItem(seatKey(room)) ?? undefined; } catch { return undefined; }
+}
+function rememberSeat(room: string, id: string): void {
+  try { localStorage.setItem(seatKey(room), id); } catch { /* sem storage */ }
+}
+
 // ---------------- site ----------------
 
 // Landing e varanda até o jogador escolher uma mesa (/mesa/CODIGO); daí em diante, o jogo.
@@ -80,14 +92,14 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
 
   const confetti = new Confetti($("table"));
 
-  // Reorganizar a mão (também na vez: clicar escolhe a pedra, arrastar muda a ordem); a ordem fica salva nesta aba.
+  // Reorganizar a mão (também na vez: clicar escolhe a pedra, arrastar muda a ordem); a ordem fica salva no navegador.
   const orderKey = `trimino.handOrder.${room}`;
-  try { handOrder = JSON.parse(sessionStorage.getItem(orderKey) ?? "[]"); } catch { handOrder = []; }
+  try { handOrder = JSON.parse(localStorage.getItem(orderKey) ?? "[]"); } catch { handOrder = []; }
   const handDrag = enableHandDrag($("hand"), {
     canDrag: () => !!state,
     onReorder: (ids) => {
       handOrder = ids;
-      try { sessionStorage.setItem(orderKey, JSON.stringify(ids)); } catch { /* sem storage */ }
+      try { localStorage.setItem(orderKey, JSON.stringify(ids)); } catch { /* sem storage */ }
       render();
     },
     onDragChange: (active) => {
@@ -99,7 +111,9 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
   if (import.meta.env.DEV) Object.assign(window, { __trimino: { board, confetti, get state() { return state; } } });
 
   let myId = "";
-  const conn = new Connection({ t: "join", room, name, clientId: clientId(), watch }, onMessage, (online) => {
+  const myClientId = clientId();
+  const resume = lastSeat(room);
+  const conn = new Connection({ t: "join", room, name, clientId: myClientId, resume: resume !== myClientId ? resume : undefined, watch }, onMessage, (online) => {
     $("status").textContent = online ? "" : "reconectando…";
     $("status").classList.toggle("offline", !online);
   });
@@ -111,6 +125,7 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
     switch (msg.t) {
       case "welcome":
         myId = msg.you;
+        rememberSeat(room, myClientId);
         mesh.iceServers = msg.iceServers;
         mesh.closeAll();
         if (msg.inCall ?? true) void enterCall(msg.peers);
@@ -421,13 +436,25 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
     $("room-code").textContent = s.title ? `${s.title} · ${s.room}` : `Mesa ${s.room}`;
     $<HTMLAnchorElement>("share-wa").href = whatsappUrl(s.room, s.title);
     if (s.title) document.title = `${s.title} · Triminó`;
+    // anfitrião, durante a partida: ✕ para tirar um jogador (ex.: sumiu sem avisar); a vez passa se for dele
+    const iAmHost = !!s.players.find((p) => p.id === s.you.id)?.isHost;
+    const inMatch = s.phase === "lottery" || s.phase === "playing" || s.phase === "roundOver";
     $("scores").replaceChildren(
       ...s.players.filter((p) => !p.spectator).map((p, i) => {
         const li = document.createElement("li");
         li.className = `score${p.id === s.turnPlayerId ? " turn" : ""}${p.connected ? "" : " away"}${p.out ? " out" : ""}`;
         li.style.setProperty("--owner", p.spectator ? "#888" : PLAYER_COLORS[i % 4]);
-        li.innerHTML = `<span class="dot"></span><span class="nm"></span><b>${p.score}</b>${p.out ? "<small>desistiu</small>" : ""}`;
+        li.innerHTML = `<span class="dot"></span><span class="nm"></span><b>${p.score}</b>${p.out ? "<small>desistiu</small>" : !p.connected ? "<small>offline</small>" : ""}`;
         li.querySelector(".nm")!.textContent = p.name;
+        if (iAmHost && inMatch && !p.out && p.id !== s.you.id) {
+          const x = Object.assign(document.createElement("button"), { className: "score-remove", textContent: "✕", title: `Tirar ${p.name} da partida` });
+          x.setAttribute("aria-label", x.title);
+          x.onclick = () => {
+            if (confirm(`Tirar ${p.name} da partida? Conta como desistência${p.id === s.turnPlayerId ? " e a vez passa para o próximo" : ""}.`))
+              conn.send({ t: "removePlayer", id: p.id });
+          };
+          li.append(x);
+        }
         return li;
       }),
     );
