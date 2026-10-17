@@ -39,6 +39,8 @@ data class PlayerInfo(
   val connected: Boolean,
   val isHost: Boolean,
   val spectator: Boolean,
+  /** Desistiu da partida. */
+  val out: Boolean = false,
 )
 
 @Serializable data class RoundSummary(val winnerId: String? = null, val reason: String, val points: Int)
@@ -66,6 +68,7 @@ data class GameState(
   val lottery: Lottery? = null,
   val log: List<LogEntry>,
   val roundSummary: RoundSummary? = null,
+  val winnerId: String? = null,
   val you: You,
 )
 
@@ -90,6 +93,8 @@ sealed interface ClientMessage {
   @Serializable @SerialName("start") data object Start : ClientMessage
 
   @Serializable @SerialName("pickLot") data class PickLot(val slot: Int) : ClientMessage
+
+  @Serializable @SerialName("forfeit") data object Forfeit : ClientMessage
 
   @Serializable @SerialName("nextRound") data object NextRound : ClientMessage
 

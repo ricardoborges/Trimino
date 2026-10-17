@@ -53,6 +53,8 @@ export interface PlayerInfo {
   connected: boolean;
   isHost: boolean;
   spectator: boolean;
+  /** Desistiu da partida. */
+  out: boolean;
 }
 
 export interface RoundSummary {
@@ -73,6 +75,8 @@ export interface GameState {
   lottery: Lottery | null;
   log: LogEntry[];
   roundSummary: RoundSummary | null;
+  /** Vencedor da partida, quando ela termina. */
+  winnerId: string | null;
   you: {
     id: string;
     hand: Tile[];
@@ -100,6 +104,7 @@ export type ClientMessage =
   | { t: "join"; room: string; name: string; clientId: string }
   | { t: "start" }
   | { t: "pickLot"; slot: number }
+  | { t: "forfeit" }
   | { t: "nextRound" }
   | { t: "place"; tileId: number; r: number; c: number; rot: number }
   | { t: "draw" }

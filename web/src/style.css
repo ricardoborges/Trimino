@@ -81,6 +81,11 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .score small { color: var(--muted); }
 .score.turn { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(242, 179, 61, 0.25); }
 .score.away { opacity: 0.5; }
+.score.out { opacity: 0.45; }
+.score.out b { text-decoration: line-through; }
+.score.out small { color: var(--muted); }
+.chip.leave { border-color: rgba(226, 91, 76, 0.6); color: #ffb3aa; flex: none; }
+.chip.leave:hover { background: rgba(226, 91, 76, 0.18); }
 
 .main { display: grid; grid-template-columns: 1fr 300px; min-height: 0; }
 

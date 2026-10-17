@@ -28,7 +28,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.OutlinedButton
@@ -46,6 +48,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
@@ -163,12 +166,35 @@ private fun TopBar(vm: GameViewModel, s: GameState?) {
           horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
           Box(Modifier.size(9.dp).background(if (p.spectator) Color.Gray else PlayerColors[seat % 4], CircleShape))
-          Text(p.name + if (p.isHost) " ★" else "", color = if (p.connected) Color.White else Muted, fontSize = 13.sp, maxLines = 1)
-          Text("${p.score}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+          Text(p.name + if (p.isHost) " ★" else "", color = if (p.connected && !p.out) Color.White else Muted, fontSize = 13.sp, maxLines = 1)
+          Text(
+            "${p.score}",
+            color = if (p.out) Muted else Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+            textDecoration = if (p.out) TextDecoration.LineThrough else null,
+          )
+          if (p.out) Text("desistiu", color = Muted, fontSize = 11.sp)
         }
       }
     }
-    Text("⏏", color = Muted, fontSize = 18.sp, modifier = Modifier.clickable { vm.leave() }.padding(4.dp))
+    var confirmQuit by remember { mutableStateOf(false) }
+    Text(
+      "Sair",
+      color = Color(0xFFFFB3AA),
+      fontSize = 13.sp,
+      modifier = Modifier.clip(CircleShape).border(1.dp, Danger.copy(alpha = 0.6f), CircleShape).clickable { confirmQuit = true }
+        .padding(horizontal = 10.dp, vertical = 4.dp),
+    )
+    if (confirmQuit) {
+      AlertDialog(
+        onDismissRequest = { confirmQuit = false },
+        title = { Text(if (vm.inMatch) "Desistir da partida?" else "Sair da sala?") },
+        text = { if (vm.inMatch) Text("Os outros jogadores continuam o jogo sem você.") },
+        confirmButton = { TextButton({ confirmQuit = false; vm.quit() }) { Text(if (vm.inMatch) "Desistir" else "Sair") } },
+        dismissButton = { TextButton({ confirmQuit = false }) { Text("Cancelar") } },
+      )
+    }
   }
 }
 
@@ -289,7 +315,7 @@ private fun PhaseCard(vm: GameViewModel, s: GameState, modifier: Modifier) {
         Triple("Fim da rodada ${s.round}", w?.let { "${it.name} levou +${s.roundSummary!!.points}. Meta: ${s.targetScore} pontos." } ?: "", "Próxima rodada")
       }
       else -> {
-        val champ = s.players.maxBy { it.score }
+        val champ = s.players.firstOrNull { it.id == s.winnerId } ?: s.players.maxBy { it.score }
         Triple("🏆 ${champ.name} venceu!", "${champ.score} pontos.", "Nova partida")
       }
     }

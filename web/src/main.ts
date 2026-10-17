@@ -204,6 +204,24 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
     if (e.key === "Escape" && !$("log-panel").hidden) setLogOpen(false);
   });
 
+  // Sair: durante a partida, desiste (os outros continuam) e volta para o lobby.
+  $("leave").onclick = () => {
+    const me = state?.players.find((p) => p.id === state?.you.id);
+    const playing = !!state && state.phase !== "lobby" && state.phase !== "gameOver" && !!me && !me.spectator && !me.out;
+    const question = playing
+      ? "Desistir da partida? Os outros jogadores continuam o jogo sem você."
+      : "Sair da sala?";
+    if (!confirm(question)) return;
+    if (playing) conn.send({ t: "forfeit" });
+    // dá tempo de a mensagem sair antes de fechar a conexão
+    setTimeout(() => {
+      mesh.closeAll();
+      mesh.local?.getTracks().forEach((t) => t.stop());
+      conn.close();
+      location.href = location.pathname;
+    }, 200);
+  };
+
   $("room-code").onclick = async () => {
     await navigator.clipboard?.writeText(location.href).catch(() => {});
     toast("Link da sala copiado!");
@@ -251,9 +269,9 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
     $("scores").replaceChildren(
       ...s.players.map((p, i) => {
         const li = document.createElement("li");
-        li.className = `score${p.id === s.turnPlayerId ? " turn" : ""}${p.connected ? "" : " away"}`;
+        li.className = `score${p.id === s.turnPlayerId ? " turn" : ""}${p.connected ? "" : " away"}${p.out ? " out" : ""}`;
         li.style.setProperty("--owner", p.spectator ? "#888" : PLAYER_COLORS[i % 4]);
-        li.innerHTML = `<span class="dot"></span><span class="nm"></span><b>${p.score}</b>`;
+        li.innerHTML = `<span class="dot"></span><span class="nm"></span><b>${p.score}</b>${p.out ? "<small>desistiu</small>" : ""}`;
         li.querySelector(".nm")!.textContent = p.name + (p.isHost ? " ★" : "");
         return li;
       }),
@@ -356,7 +374,7 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
         btn.disabled = !isHost;
         btn.onclick = () => conn.send({ t: "nextRound" });
       } else {
-        const champ = [...s.players].sort((a, b) => b.score - a.score)[0];
+        const champ = s.players.find((x) => x.id === s.winnerId) ?? [...s.players].sort((a, b) => b.score - a.score)[0];
         h.textContent = `🏆 ${champ.name} venceu!`;
         p.textContent = `${champ.score} pontos.`;
         btn.textContent = isHost ? "Nova partida" : "Aguardando o anfitrião…";

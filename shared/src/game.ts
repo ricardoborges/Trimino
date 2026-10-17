@@ -28,6 +28,8 @@ export interface GamePlayer {
   name: string;
   hand: Tile[];
   score: number;
+  /** Desistiu: fica fora das rodadas, mas continua no placar. */
+  out: boolean;
 }
 
 export interface PlaceResult {
@@ -63,6 +65,8 @@ export class TriminoGame {
   /** Índice de quem abriu a rodada atual; a próxima rodada começa com o seguinte. */
   private starter = 0;
   roundSummary: RoundSummary | null = null;
+  /** Vencedor da partida (definido no fim do jogo). */
+  winnerId: string | null = null;
   log: LogEntry[] = [];
 
   constructor(
@@ -72,7 +76,7 @@ export class TriminoGame {
   ) {
     if (players.length < MIN_PLAYERS || players.length > MAX_PLAYERS)
       throw new RuleError(`São necessários de ${MIN_PLAYERS} a ${MAX_PLAYERS} jogadores.`);
-    this.players = players.map((p) => ({ ...p, hand: [], score: 0 }));
+    this.players = players.map((p) => ({ ...p, hand: [], score: 0, out: false }));
     this.lotteryPool = this.shuffled().slice(0, LOTTERY_SLOTS);
     this.addLog({ action: "Sorteio: cada jogador escolhe uma pedra. A maior começa." });
   }
@@ -91,18 +95,23 @@ export class TriminoGame {
   pickLot(playerId: string, slot: number): void {
     if (this.phase !== "lottery") throw new RuleError("O sorteio já terminou.");
     const p = this.player(playerId);
-    if (!p) throw new RuleError("Você não está nesta partida.");
+    if (!p || p.out) throw new RuleError("Você não está nesta partida.");
     if (this.lotteryPicks.some((x) => x.playerId === playerId)) throw new RuleError("Você já tirou sua pedra.");
     if (!Number.isInteger(slot) || slot < 0 || slot >= this.lotteryPool.length) throw new RuleError("Pedra inválida.");
     if (this.lotteryPicks.some((x) => x.slot === slot)) throw new RuleError("Essa pedra já foi escolhida.");
     const tile = this.lotteryPool[slot];
     this.lotteryPicks.push({ playerId, slot, tile });
     this.addLog({ actor: p.name, action: "tirou", tile: tile.v });
-    if (this.lotteryPicks.length === this.players.length) {
-      const best = this.lotteryPicks.reduce((a, b) => (lotRank(b.tile) > lotRank(a.tile) ? b : a));
-      this.lotteryWinnerId = best.playerId;
-      this.addLog({ actor: this.player(best.playerId)!.name, action: "tirou a maior pedra e começa!" });
-    }
+    this.checkLottery();
+  }
+
+  /** Quando todos os jogadores ativos já tiraram, define quem começa. */
+  private checkLottery(): void {
+    const active = this.active;
+    if (this.lotteryWinnerId || active.some((p) => !this.lotteryPicks.some((x) => x.playerId === p.id))) return;
+    const best = this.lotteryPicks.reduce((a, b) => (lotRank(b.tile) > lotRank(a.tile) ? b : a));
+    this.lotteryWinnerId = best.playerId;
+    this.addLog({ actor: this.player(best.playerId)!.name, action: "tirou a maior pedra e começa!" });
   }
 
   get lotteryDone(): boolean {
@@ -124,10 +133,24 @@ export class TriminoGame {
     return this.players.find((p) => p.id === id);
   }
 
+  /** Jogadores que ainda estão na partida (não desistiram). */
+  get active(): GamePlayer[] {
+    return this.players.filter((p) => !p.out);
+  }
+
+  /** Próximo índice de jogador ativo depois de `from`. */
+  private nextActive(from: number): number {
+    for (let i = 1; i <= this.players.length; i++) {
+      const idx = (from + i) % this.players.length;
+      if (!this.players[idx].out) return idx;
+    }
+    return from;
+  }
+
   startRound(first = false): void {
     if (this.phase === "gameOver") throw new RuleError("O jogo acabou.");
     if (this.phase === "lottery" && !first) throw new RuleError("O sorteio ainda não terminou.");
-    if (!first) this.starter = (this.starter + 1) % this.players.length;
+    if (!first || this.players[this.starter].out) this.starter = this.nextActive(this.starter);
     this.round++;
     this.phase = "playing";
     this.board.clear();
@@ -137,8 +160,8 @@ export class TriminoGame {
     this.consecutivePasses = 0;
 
     this.pool = this.shuffled();
-    const n = handSize(this.players.length);
-    for (const p of this.players) p.hand = this.pool.splice(0, n);
+    const n = handSize(this.active.length);
+    for (const p of this.players) p.hand = p.out ? [] : this.pool.splice(0, n);
 
     this.turn = this.starter;
     this.addLog({ action: `Rodada ${this.round}: ${this.current.name} começa com a peça que quiser.` });
@@ -272,17 +295,58 @@ export class TriminoGame {
     p.score -= SCORE.passPenalty;
     this.consecutivePasses++;
     this.addLog({ actor: p.name, action: "passou a vez", points: -SCORE.passPenalty });
-    if (this.pool.length === 0 && this.consecutivePasses >= this.players.length) this.endBlocked();
+    if (this.pool.length === 0 && this.consecutivePasses >= this.active.length) this.endBlocked();
     else this.nextTurn();
   }
 
   private nextTurn(): void {
-    this.turn = (this.turn + 1) % this.players.length;
+    this.turn = this.nextActive(this.turn);
     this.drawsThisTurn = 0;
   }
 
+  /**
+   * Jogador desiste: sai das rodadas, as peças da mão voltam para o monte e a partida segue com os demais.
+   * Se sobrar um só, ele vence.
+   */
+  forfeit(playerId: string): void {
+    const p = this.player(playerId);
+    if (!p || p.out) throw new RuleError("Você não está nesta partida.");
+    if (this.phase === "gameOver") throw new RuleError("A partida já terminou.");
+    const wasTurn = this.phase === "playing" && this.current === p;
+    p.out = true;
+    if (p.hand.length) {
+      this.pool.push(...p.hand);
+      p.hand = [];
+      for (let i = this.pool.length - 1; i > 0; i--) {
+        const j = Math.floor(this.random() * (i + 1));
+        [this.pool[i], this.pool[j]] = [this.pool[j], this.pool[i]];
+      }
+    }
+    this.addLog({ actor: p.name, action: "desistiu da partida" });
+
+    const active = this.active;
+    if (active.length === 1) {
+      this.finish(active[0], "os outros jogadores desistiram");
+      return;
+    }
+    if (this.phase === "lottery") {
+      this.lotteryPicks = this.lotteryPicks.filter((x) => x.playerId !== playerId);
+      this.lotteryWinnerId = null;
+      this.checkLottery();
+    } else if (this.phase === "playing") {
+      this.consecutivePasses = 0;
+      if (wasTurn) this.nextTurn();
+    }
+  }
+
+  private finish(champ: GamePlayer, note: string): void {
+    this.phase = "gameOver";
+    this.winnerId = champ.id;
+    this.addLog({ actor: `🏆 ${champ.name}`, action: "venceu o jogo!", note });
+  }
+
   private endRound(winner: GamePlayer, reason: RoundSummary["reason"]): void {
-    const others = this.players.filter((p) => p !== winner);
+    const others = this.active.filter((p) => p !== winner);
     const rest = others.reduce((s, p) => s + p.hand.reduce((a, t) => a + tileSum(t), 0), 0);
     const points = reason === "emptyHand" ? SCORE.emptyHand + rest : rest - winner.hand.reduce((a, t) => a + tileSum(t), 0);
     winner.score += points;
@@ -293,11 +357,9 @@ export class TriminoGame {
       action: reason === "emptyHand" ? "esvaziou a mão" : "tinha menos pontos na mão",
       points,
     });
-    const top = Math.max(...this.players.map((p) => p.score));
+    const top = Math.max(...this.active.map((p) => p.score));
     if (top >= this.targetScore) {
-      this.phase = "gameOver";
-      const champ = this.players.find((p) => p.score === top)!;
-      this.addLog({ actor: `🏆 ${champ.name}`, action: "venceu o jogo!", note: `${top} pontos` });
+      this.finish(this.active.find((p) => p.score === top)!, `${top} pontos`);
     } else {
       this.phase = "roundOver";
     }
@@ -305,7 +367,7 @@ export class TriminoGame {
 
   private endBlocked(): void {
     const handValue = (p: GamePlayer) => p.hand.reduce((a, t) => a + tileSum(t), 0);
-    const winner = this.players.reduce((a, b) => (handValue(b) < handValue(a) ? b : a));
+    const winner = this.active.reduce((a, b) => (handValue(b) < handValue(a) ? b : a));
     this.endRound(winner, "blocked");
   }
 

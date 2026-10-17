@@ -72,14 +72,13 @@ export class Room {
         case "pickLot": {
           const game = this.requireGame();
           game.pickLot(member.id, msg.slot);
-          // Deixa todos verem as pedras reveladas antes de dar as cartas.
-          if (game.lotteryDone)
-            setTimeout(() => {
-              if (this.game === game && game.lotteryDone) {
-                game.beginFirstRound();
-                this.broadcastState();
-              }
-            }, LOTTERY_REVEAL_MS);
+          this.beginAfterLottery(game);
+          break;
+        }
+        case "forfeit": {
+          const game = this.requireGame();
+          game.forfeit(member.id);
+          this.beginAfterLottery(game);
           break;
         }
         case "nextRound":
@@ -116,6 +115,17 @@ export class Room {
     }
   }
 
+  /** Deixa todos verem as pedras reveladas por alguns segundos antes de dar as cartas. */
+  private beginAfterLottery(game: TriminoGame): void {
+    if (!game.lotteryDone) return;
+    setTimeout(() => {
+      if (this.game === game && game.lotteryDone) {
+        game.beginFirstRound();
+        this.broadcastState();
+      }
+    }, LOTTERY_REVEAL_MS);
+  }
+
   private requireGame(): TriminoGame {
     if (!this.game) throw new RuleError("A partida ainda não começou.");
     return this.game;
@@ -137,6 +147,7 @@ export class Room {
           connected: m.ws !== null,
           isHost: m.id === hostId,
           spectator: !!g && !p,
+          out: p?.out ?? false,
         };
       });
     // Ordem dos assentos durante a partida; espectadores no fim.
@@ -160,6 +171,7 @@ export class Room {
           : null,
       log: g?.log.slice(-20) ?? [],
       roundSummary: g?.roundSummary ?? null,
+      winnerId: g?.winnerId ?? null,
       you: {
         id: viewer.id,
         hand: me?.hand ?? [],

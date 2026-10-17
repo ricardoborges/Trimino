@@ -177,4 +177,70 @@ describe("TriminoGame", () => {
     expect(g.roundSummary?.winnerId).toBe(p.id);
     expect(g.roundSummary!.points).toBeGreaterThanOrEqual(SCORE.emptyHand);
   });
+
+  describe("desistência", () => {
+    const three = [{ id: "a", name: "Ana" }, { id: "b", name: "Bia" }, { id: "c", name: "Caio" }];
+    const startedWith = (players: { id: string; name: string }[], seed: number) => {
+      const g = new TriminoGame(players, 400, seeded(seed));
+      g.players.forEach((p, i) => g.pickLot(p.id, i));
+      g.beginFirstRound();
+      return g;
+    };
+
+    it("na própria vez: a vez passa, a mão volta ao monte e o jogo segue sem ele", () => {
+      const g = startedWith(three, 21);
+      open(g);
+      const quitter = g.current;
+      const handSize = quitter.hand.length;
+      const pool = g.pool.length;
+      g.forfeit(quitter.id);
+      expect(quitter.out).toBe(true);
+      expect(quitter.hand).toHaveLength(0);
+      expect(g.pool).toHaveLength(pool + handSize);
+      expect(g.current.id).not.toBe(quitter.id);
+      expect(g.phase).toBe("playing");
+      // as próximas vezes nunca caem em quem desistiu
+      for (let i = 0; i < 6; i++) {
+        expect(g.current.out).toBe(false);
+        const id = g.current.id;
+        g.draw(id); g.draw(id); g.draw(id); g.pass(id);
+      }
+      expect(() => g.forfeit(quitter.id)).toThrow();
+    });
+
+    it("se sobra um só jogador, ele vence a partida", () => {
+      const g = started(5);
+      const stays = g.players.find((p) => p.id !== g.current.id)!;
+      g.forfeit(g.current.id);
+      expect(g.phase).toBe("gameOver");
+      expect(g.winnerId).toBe(stays.id);
+    });
+
+    it("durante o sorteio, o sorteio termina só com quem ficou", () => {
+      const g = new TriminoGame(three, 400, seeded(2));
+      g.pickLot("a", 0);
+      g.pickLot("c", 1);
+      expect(g.lotteryWinnerId).toBeNull();
+      g.forfeit("b");
+      expect(["a", "c"]).toContain(g.lotteryWinnerId);
+      g.beginFirstRound();
+      expect(g.players.find((p) => p.id === "b")!.hand).toHaveLength(0);
+      expect(g.active.every((p) => p.hand.length === 9)).toBe(true); // 2 ativos → 9 peças
+    });
+
+    it("rodadas seguintes não dão peças nem a vez a quem desistiu", () => {
+      const g = startedWith(three, 8);
+      g.forfeit("b");
+      g.current.hand = [g.current.hand[0]];
+      open(g);
+      expect(g.phase).toBe("roundOver");
+      for (let r = 0; r < 3; r++) {
+        g.startRound();
+        expect(g.current.id).not.toBe("b");
+        expect(g.player("b")!.hand).toHaveLength(0);
+        g.current.hand = [g.current.hand[0]];
+        open(g);
+      }
+    });
+  });
 });

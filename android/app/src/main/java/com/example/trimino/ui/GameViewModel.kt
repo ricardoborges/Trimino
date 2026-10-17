@@ -173,6 +173,23 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     mesh?.switchCamera()
   }
 
+  /** Está jogando uma partida em andamento (sair conta como desistência). */
+  val inMatch: Boolean
+    get() = state?.let { s ->
+      val me = s.players.firstOrNull { it.id == s.you.id }
+      s.phase != "lobby" && s.phase != "gameOver" && me != null && !me.spectator && !me.out
+    } ?: false
+
+  /** Botão "Sair": durante a partida, desiste (os outros continuam) e volta ao lobby. */
+  fun quit() {
+    if (inMatch) socket?.send(ClientMessage.Forfeit)
+    // dá tempo de a mensagem sair antes de fechar a conexão
+    viewModelScope.launch {
+      delay(200)
+      leave()
+    }
+  }
+
   fun leave() {
     socket?.close()
     socket = null
