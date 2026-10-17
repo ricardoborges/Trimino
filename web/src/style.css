@@ -56,6 +56,12 @@ label input:not([type="checkbox"]) {
   border-radius: 10px; padding: 12px; font-size: 16px;
 }
 label.check { display: flex; align-items: center; gap: 8px; }
+.hint { margin: -8px 0 0; font-size: 13px; color: var(--muted); }
+.room-share {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: var(--felt-deep); border: 1px dashed var(--felt-line); border-radius: 12px; padding: 10px 12px;
+}
+.room-share strong { font-size: 28px; letter-spacing: 0.12em; color: var(--accent); font-variant-numeric: tabular-nums; }
 
 /* ---------- app ---------- */
 .app { height: 100dvh; display: grid; grid-template-rows: auto 1fr auto; }

@@ -26,11 +26,15 @@ export class Connection {
     ws.onmessage = (e) => this.onMessage(JSON.parse(e.data));
     ws.onclose = (e) => {
       this.onStatus(false);
+      if (e.code === 4000) this.onKicked?.();
       if (this.closed || e.code === 4000) return;
       const delay = Math.min(10_000, 500 * 2 ** this.retry++);
       setTimeout(() => this.open(), delay);
     };
   }
+
+  /** O servidor fechou porque a mesma identidade conectou em outro lugar. */
+  onKicked?: () => void;
 
   send(msg: ClientMessage): void {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));

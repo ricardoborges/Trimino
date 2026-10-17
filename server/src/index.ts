@@ -35,7 +35,9 @@ const MIME: Record<string, string> = {
 const http = createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://x");
   if (url.pathname === "/healthz") {
-    res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, rooms: rooms.size }));
+    // Só contagens: listar os códigos permitiria a qualquer um entrar nas salas.
+    const online = [...rooms.values()].reduce((n, r) => n + [...r.members.values()].filter((m) => m.ws).length, 0);
+    res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, rooms: rooms.size, online }));
     return;
   }
   // Serve o cliente web compilado (npm run build); SPA cai no index.html.

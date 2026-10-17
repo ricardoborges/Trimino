@@ -13,11 +13,16 @@ const storage = {
   set: (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* sem storage */ } },
 };
 
+/**
+ * Identidade do jogador para reconexão. Fica no sessionStorage (uma por aba): sobrevive a recarregar
+ * a página, mas duas abas do mesmo navegador são jogadores diferentes em vez de derrubarem uma à outra.
+ */
 function clientId(): string {
-  let id = storage.get("trimino.clientId");
+  let id: string | null = null;
+  try { id = sessionStorage.getItem("trimino.clientId"); } catch { /* sem storage */ }
   if (!id) {
     id = crypto.randomUUID();
-    storage.set("trimino.clientId", id);
+    try { sessionStorage.setItem("trimino.clientId", id); } catch { /* sem storage */ }
   }
   return id;
 }
@@ -77,6 +82,8 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
     $("status").textContent = online ? "" : "reconectando…";
     $("status").classList.toggle("offline", !online);
   });
+
+  conn.onKicked = () => toast("Você entrou nesta sala em outra janela. Esta foi desconectada.");
 
   function onMessage(msg: ServerMessage): void {
     switch (msg.t) {
@@ -301,11 +308,30 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
     }
     if (s.phase === "lobby") {
       h.textContent = "Esperando jogadores";
-      p.textContent = `${seated} na sala. Compartilhe o link: ${location.href}`;
-      btn.textContent = "Começar partida";
+      p.textContent =
+        seated < 2
+          ? "Só você está nesta sala. Os outros jogadores precisam entrar com o mesmo código:"
+          : `${seated} jogadores na sala.`;
+      // Código em destaque + copiar link: sem isso cada um acaba criando uma sala própria.
+      const code = document.createElement("div");
+      code.className = "room-share";
+      const big = document.createElement("strong");
+      big.textContent = s.room;
+      const copy = document.createElement("button");
+      copy.className = "secondary";
+      copy.textContent = "Copiar link";
+      copy.onclick = async () => {
+        await navigator.clipboard?.writeText(`${location.origin}${location.pathname}?sala=${s.room}`).catch(() => {});
+        toast("Link da sala copiado!");
+      };
+      code.append(big, copy);
+      p.after(code);
+      btn.textContent = isHost ? (seated < 2 ? "Precisa de 2 jogadores" : "Começar partida") : "Aguardando o anfitrião…";
       btn.disabled = !isHost || seated < 2;
       btn.onclick = () => conn.send({ t: "start" });
-      if (!isHost) btn.textContent = "Aguardando o anfitrião…";
+      box.append(h, p, code, btn);
+      ov.append(box);
+      return;
     } else {
       const winner = s.players.find((x) => x.id === s.roundSummary?.winnerId);
       if (s.phase === "roundOver") {
