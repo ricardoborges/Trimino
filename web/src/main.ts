@@ -239,7 +239,7 @@ async function start(name: string, room: string, withMedia: boolean): Promise<vo
         const li = document.createElement("li");
         li.className = `score${p.id === s.turnPlayerId ? " turn" : ""}${p.connected ? "" : " away"}`;
         li.style.setProperty("--owner", p.spectator ? "#888" : PLAYER_COLORS[i % 4]);
-        li.innerHTML = `<span class="dot"></span><span class="nm"></span><b>${p.score}</b>${p.spectator ? "" : `<small>${p.handCount}▲</small>`}`;
+        li.innerHTML = `<span class="dot"></span><span class="nm"></span><b>${p.score}</b>`;
         li.querySelector(".nm")!.textContent = p.name + (p.isHost ? " ★" : "");
         return li;
       }),

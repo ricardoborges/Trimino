@@ -165,7 +165,6 @@ private fun TopBar(vm: GameViewModel, s: GameState?) {
           Box(Modifier.size(9.dp).background(if (p.spectator) Color.Gray else PlayerColors[seat % 4], CircleShape))
           Text(p.name + if (p.isHost) " ★" else "", color = if (p.connected) Color.White else Muted, fontSize = 13.sp, maxLines = 1)
           Text("${p.score}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-          if (!p.spectator) Text("${p.handCount}▲", color = Muted, fontSize = 12.sp)
         }
       }
     }
