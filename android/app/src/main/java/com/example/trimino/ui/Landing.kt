@@ -56,7 +56,8 @@ fun LandingScreen(site: SiteViewModel) {
     Modifier.fillMaxSize()
       .background(Brush.verticalGradient(listOf(Color(0xFF0B2219), FeltDeep, Color(0xFF0B2219))))
   ) {
-    Column(Modifier.fillMaxSize().verticalScroll(scroll).safeDrawingPadding()) {
+    // o espaço das barras e do teclado fica fora da rolagem, para o campo em foco subir acima do teclado
+    Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(scroll)) {
       SiteNav(null)
       Column(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp).widthIn(max = 560.dp).align(Alignment.CenterHorizontally),

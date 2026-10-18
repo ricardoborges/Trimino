@@ -14,8 +14,8 @@ android {
         applicationId = "com.example.trimino"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
 
         // Endereço do site (o mesmo da Web). Troque com -Ptrimino.server=https://seu-dominio no build ou na tela de
         // entrada do app. O padrão é o wrangler dev visto de dentro do emulador (10.0.2.2 é o localhost da máquina).
