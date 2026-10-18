@@ -901,12 +901,11 @@ label.check { display: flex; align-items: center; gap: 8px; }
 /* ---------- comprar: o monte espalhado na mesa ---------- */
 .pile-modal {
   position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 16px;
-  background: rgba(4, 14, 10, 0.62); backdrop-filter: blur(3px); animation: pile-fade 0.2s ease;
+  background: rgba(4, 14, 10, 0.62); backdrop-filter: blur(3px);
 }
 .pile-card {
   width: min(720px, 100%); display: grid; gap: 12px; padding: 16px; border-radius: 20px;
   background: var(--panel); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), inset 0 0 0 1px var(--felt-line);
-  animation: pile-pop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.15);
 }
 .pile-card header { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
 .pile-card h2 { margin: 0; font-size: 18px; }
@@ -921,7 +920,6 @@ label.check { display: flex; align-items: center; gap: 8px; }
   position: absolute; width: var(--tile, 60px); aspect-ratio: 100 / 90; padding: 0; border: 0; background: none; cursor: pointer;
   transform: translate(-50%, -50%) rotate(var(--rot)); transition: transform 0.18s ease, filter 0.18s ease;
   filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.45)) drop-shadow(0 1px 0 rgba(0, 0, 0, 0.25));
-  animation: pile-in 0.35s ease backwards;
 }
 .pile-tile svg { width: 100%; height: 100%; display: block; }
 .pile-tile:hover:not(:disabled), .pile-tile:focus-visible {
@@ -938,14 +936,12 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .pile-drawn img, .pile-drawn svg { width: 100%; display: block; }
 .pile-drawn-label { font-weight: 700; color: var(--accent); }
 @keyframes pile-fade { from { opacity: 0; } }
-@keyframes pile-pop { from { opacity: 0; transform: translateY(12px) scale(0.97); } }
-@keyframes pile-in { from { opacity: 0; transform: translate(-50%, -50%) rotate(calc(var(--rot) - 40deg)) scale(0.8); } }
 @keyframes pile-flip { from { opacity: 0; transform: perspective(400px) rotateY(90deg) scale(0.9); } }
 @media (max-width: 560px) {
   .pile-card { padding: 12px; }
   .pile-felt { aspect-ratio: 4 / 5; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .pile-modal, .pile-card, .pile-tile, .pile-drawn, .pile-modal.revealing .pile-reveal { animation: none; }
+  .pile-drawn, .pile-modal.revealing .pile-reveal { animation: none; }
   .pile-tile { transition: none; }
 }
