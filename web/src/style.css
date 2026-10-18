@@ -601,6 +601,10 @@ label.check { display: flex; align-items: center; gap: 8px; }
 }
 .soon-badge svg { width: 18px; height: 18px; fill: #3ddc84; }
 .soon-badge b { color: #3ddc84; font-weight: 700; }
+.android-download { text-decoration: none; transition: background 0.2s, box-shadow 0.2s, transform 0.2s; }
+.android-download:hover { background: rgba(61, 220, 132, 0.16); box-shadow: inset 0 0 0 1px rgba(61, 220, 132, 0.55); transform: translateY(-1px); }
+.android-download small { color: var(--muted); font-size: 12px; font-weight: 500; }
+.site-footer a { color: inherit; }
 .hero-tiles { display: none; }
 .no-webgl .hero-tiles { display: block; position: relative; height: 150px; margin-top: 36px; }
 .hero-tile {

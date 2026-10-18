@@ -1,4 +1,5 @@
 import java.net.URI
+import java.util.Properties
 
 plugins {
   alias(libs.plugins.android.application)
@@ -24,10 +25,29 @@ android {
         manifestPlaceholders["triminoHost"] = URI(server).host
     }
 
+    // Chave de release fora do repositório: ~/.android/trimino-release.properties (storeFile, storePassword,
+    // keyAlias, keyPassword), ou outro arquivo com -Ptrimino.signing=caminho. Sem ele, o release sai sem assinatura.
+    val signingFile = file((findProperty("trimino.signing") as String?) ?: "${System.getProperty("user.home")}/.android/trimino-release.properties")
+    signingConfigs {
+        if (signingFile.exists()) {
+            create("release") {
+                val p = Properties().apply { signingFile.inputStream().use(::load) }
+                storeFile = file(p.getProperty("storeFile"))
+                storePassword = p.getProperty("storePassword")
+                keyAlias = p.getProperty("keyAlias")
+                keyPassword = p.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release")
+            // Só celulares ARM: o WebRTC nativo de x86 dobraria o APK (o site serve arquivos de até 25 MiB).
+            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         }
     }
     compileOptions {

@@ -64,6 +64,15 @@ O app segue o site: entrada com conta (e-mail e senha), **Google** ou convidado,
 - Endereço do site: o padrão é `http://10.0.2.2:8787` (wrangler dev visto do emulador). Para outro, compile com `./gradlew assembleRelease -Ptrimino.server=https://<seu-domínio>`, ou toque em "Servidor" no rodapé da tela de entrada.
 - Num aparelho pelo USB: `adb reverse tcp:8787 tcp:8787` e use `http://localhost:8787`.
 - **Links de convite:** `https://<site>/mesa/CODIGO` abre direto no app (o host vem do `trimino.server`).
+- **APK para download:** a landing tem o botão "Baixar para Android", que serve `web/public/download/trimino.apk`. Para gerar uma versão nova:
+
+  ```bash
+  cd android
+  ./gradlew assembleRelease -x lintVitalAnalyzeRelease -x lintVitalReportRelease -x lintVitalRelease -Ptrimino.server=https://trimino.ricardoborges.workers.dev
+  cp app/build/outputs/apk/release/app-release.apk ../web/public/download/trimino.apk
+  ```
+
+  Aumente o `versionCode` a cada versão, ou o Android não atualiza por cima. O lint de release está pulado porque trava neste ambiente. A assinatura usa a chave em `~/.android/trimino-release.jks` (senha em `~/.android/trimino-release.properties`), que fica fora do repositório. Guarde as duas: sem elas, quem instalou não recebe atualizações sem desinstalar. Os arquivos do site têm limite de 25 MiB, por isso o release leva só o WebRTC de ARM.
 - **Login com Google no app:** usa o Credential Manager, que pede ao Google um ID token emitido para o client ID da Web (`GOOGLE_CLIENT_ID`, que o app lê em `/api/config`). O app manda o token para `POST /api/google`, e o servidor confere no Google para quem ele foi emitido. No Google Cloud Console, no mesmo projeto do client da Web, crie também um "ID do cliente OAuth" do tipo **Android** com o nome do pacote (`com.example.trimino`) e o SHA-1 do certificado que assina o APK (`./gradlew signingReport` mostra o da chave de debug). Sem ele, a escolha de conta do Google falha no app.
 
 ### Testes
