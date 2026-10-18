@@ -175,6 +175,22 @@ describe("TriminoGame", () => {
     expect(() => g.place(p.id, p.hand[0].id, 5, 5, 0)).toThrow(); // sem vizinho
   });
 
+  it("compra a pedra escolhida no monte (às cegas) e conta as compras que restam", () => {
+    const g = started(3);
+    open(g);
+    const p = g.current;
+    expect(g.drawsLeft(p.id)).toBe(SCORE.maxDrawsPerTurn);
+    const chosen = g.pool[2];
+    const size = g.pool.length;
+    expect(g.draw(p.id, 2)).toBe(chosen);
+    expect(p.hand).toContain(chosen);
+    expect(g.pool).toHaveLength(size - 1);
+    expect(g.pool).not.toContain(chosen);
+    expect(g.drawsLeft(p.id)).toBe(SCORE.maxDrawsPerTurn - 1);
+    expect(() => g.draw(p.id, g.pool.length)).toThrow();
+    expect(() => g.draw(p.id, -1)).toThrow();
+  });
+
   it("jogada comum: soma da pedra − 5 por pedra comprada na vez", () => {
     for (let seed = 1; seed < 60; seed++) {
       const g = started(seed, 10_000);

@@ -154,6 +154,8 @@ export interface GameState {
      */
     frontier: { r: number; c: number }[];
     canDraw: boolean;
+    /** Quantas compras ainda cabem nesta vez. */
+    drawsLeft?: number;
     canPass: boolean;
     /** Pode adicionar e remover jogadores IA (só o administrador do site). */
     canManageBots?: boolean;
@@ -197,7 +199,8 @@ export type ClientMessage =
   /** Anfitrião: começa uma partida nova (novo sorteio, placar zerado) com quem está na mesa. */
   | { t: "restartGame" }
   | { t: "place"; tileId: number; r: number; c: number; rot: number }
-  | { t: "draw" }
+  /** `slot`: qual pedra do monte (virada para baixo) o jogador escolheu; sem ele, a de cima. */
+  | { t: "draw"; slot?: number }
   | { t: "pass" }
   | { t: "signal"; to: string; data: SignalData };
 

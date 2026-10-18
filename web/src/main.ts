@@ -9,6 +9,7 @@ import { enableHandDrag } from "./handDrag.ts";
 import { Connection } from "./net.ts";
 import { Mesh } from "./rtc.ts";
 import { Settlement } from "./settlement.ts";
+import { DrawPile } from "./drawPile.ts";
 import { enterSite, mesaUrl, whatsappUrl, type Entry } from "./site.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -301,7 +302,9 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
   };
   $("play").onclick = play;
   $("rotate").onclick = rotate;
-  $("draw").onclick = () => conn.send({ t: "draw" });
+  // Comprar: abre o monte espalhado e o jogador escolhe uma pedra (virada para baixo).
+  const drawPile = new DrawPile($("draw-modal"), (slot) => conn.send({ t: "draw", slot }), tileVisual, () => state?.you.hand.map((t) => t.id) ?? []);
+  $("draw").onclick = () => state && drawPile.show(state);
   $("pass").onclick = () => conn.send({ t: "pass" });
   $("fit").onclick = () => state && board.fit(state.board);
 
@@ -483,6 +486,7 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
     if ($("restart").hidden) setRestartOpen(false);
     $("restart-round").toggleAttribute("disabled", s.phase !== "playing");
     renderSeats(s);
+    drawPile.update(s);
 
     // mão (não redesenha no meio de um arrasto; render() é chamado de novo quando o jogador solta)
     const pos = new Map(handOrder.map((id, i) => [id, i]));

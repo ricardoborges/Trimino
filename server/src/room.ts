@@ -216,7 +216,7 @@ export class Room {
           this.requireGame().place(member.id, msg.tileId, msg.r, msg.c, msg.rot);
           break;
         case "draw":
-          this.requireGame().draw(member.id);
+          this.requireGame().draw(member.id, typeof msg.slot === "number" ? msg.slot : undefined);
           break;
         case "pass":
           this.requireGame().pass(member.id);
@@ -436,6 +436,7 @@ export class Room {
         hand: me?.hand ?? [],
         frontier: g && g.phase === "playing" ? g.frontier().map(([r, c]) => ({ r, c })) : [],
         canDraw: g ? g.canDraw(viewer.id) : false,
+        drawsLeft: g ? g.drawsLeft(viewer.id) : 0,
         canPass: g ? g.canPass(viewer.id) : false,
         canManageBots: !!viewer.admin,
       },

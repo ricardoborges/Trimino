@@ -365,6 +365,30 @@
           <button id="pass" class="secondary">Passar</button>
         </div>
       </footer>
+      <div id="draw-modal" class="pile-modal" hidden role="dialog" aria-modal="true" aria-labelledby="pile-title">
+        <svg width="0" height="0" aria-hidden="true" style="position: absolute">
+          <defs>
+            <linearGradient id="pile-back" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#f7f0de" />
+              <stop offset="0.55" stop-color="#e6dbc0" />
+              <stop offset="1" stop-color="#c9b98f" />
+            </linearGradient>
+          </defs>
+        </svg>
+        <div class="pile-card">
+          <header>
+            <div>
+              <h2 id="pile-title">Escolha uma pedra do monte</h2>
+              <p class="pile-hint"></p>
+            </div>
+            <button class="pile-close chip" title="Fechar (Esc)" aria-label="Fechar">✕</button>
+          </header>
+          <div class="pile-felt">
+            <div class="pile"></div>
+            <div class="pile-reveal" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
     </div>
     <div id="toast" class="toast" role="status"></div>
     <script type="module" src="/src/main.ts"></script>

@@ -465,7 +465,7 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .actions .solo { background: var(--accent); color: var(--accent-ink); box-shadow: none; font-size: 1.15em; padding: 14px 36px; min-height: 52px; }
 
 .toast {
-  position: fixed; left: 50%; bottom: 110px; transform: translate(-50%, 20px); opacity: 0; z-index: 10;
+  position: fixed; left: 50%; bottom: 110px; transform: translate(-50%, 20px); opacity: 0; z-index: 40;
   background: #000c; padding: 10px 16px; border-radius: 10px; transition: 0.2s ease; pointer-events: none;
   max-width: calc(100% - 32px);
 }
@@ -897,3 +897,55 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .room-share { flex-wrap: wrap; }
 .room-share .row { flex: 1 1 200px; flex-wrap: nowrap; }
 .room-share .row > * { min-height: 40px; padding: 8px 14px; white-space: nowrap; }
+
+/* ---------- comprar: o monte espalhado na mesa ---------- */
+.pile-modal {
+  position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 16px;
+  background: rgba(4, 14, 10, 0.62); backdrop-filter: blur(3px); animation: pile-fade 0.2s ease;
+}
+.pile-card {
+  width: min(720px, 100%); display: grid; gap: 12px; padding: 16px; border-radius: 20px;
+  background: var(--panel); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), inset 0 0 0 1px var(--felt-line);
+  animation: pile-pop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+}
+.pile-card header { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.pile-card h2 { margin: 0; font-size: 18px; }
+.pile-hint { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.pile-felt {
+  position: relative; aspect-ratio: 16 / 10; max-height: 62dvh; border-radius: 14px; overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 40%, #24654b, #123d2e 70%, #0d3022);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.pile { position: absolute; inset: 4%; }
+.pile-tile {
+  position: absolute; width: var(--tile, 60px); aspect-ratio: 100 / 90; padding: 0; border: 0; background: none; cursor: pointer;
+  transform: translate(-50%, -50%) rotate(var(--rot)); transition: transform 0.18s ease, filter 0.18s ease;
+  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.45)) drop-shadow(0 1px 0 rgba(0, 0, 0, 0.25));
+  animation: pile-in 0.35s ease backwards;
+}
+.pile-tile svg { width: 100%; height: 100%; display: block; }
+.pile-tile:hover:not(:disabled), .pile-tile:focus-visible {
+  z-index: 40 !important; outline: none;
+  transform: translate(-50%, -58%) rotate(var(--rot)) scale(1.12);
+  filter: drop-shadow(0 10px 10px rgba(0, 0, 0, 0.45)) drop-shadow(0 0 6px rgba(242, 179, 61, 0.55));
+}
+.pile-tile:disabled { cursor: default; }
+.pile-tile.picked { z-index: 40 !important; transform: translate(-50%, -70%) rotate(var(--rot)) scale(1.2); filter: drop-shadow(0 14px 12px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 8px rgba(242, 179, 61, 0.7)); }
+.pile-reveal { position: absolute; inset: 0; display: none; place-items: center; align-content: center; gap: 10px; background: rgba(6, 20, 15, 0.55); }
+.pile-modal.revealing .pile-reveal { display: grid; animation: pile-fade 0.2s ease; }
+.pile-modal.revealing .pile-tile { opacity: 0.35; }
+.pile-drawn { width: 120px; animation: pile-flip 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2); filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.5)); }
+.pile-drawn img, .pile-drawn svg { width: 100%; display: block; }
+.pile-drawn-label { font-weight: 700; color: var(--accent); }
+@keyframes pile-fade { from { opacity: 0; } }
+@keyframes pile-pop { from { opacity: 0; transform: translateY(12px) scale(0.97); } }
+@keyframes pile-in { from { opacity: 0; transform: translate(-50%, -50%) rotate(calc(var(--rot) - 40deg)) scale(0.8); } }
+@keyframes pile-flip { from { opacity: 0; transform: perspective(400px) rotateY(90deg) scale(0.9); } }
+@media (max-width: 560px) {
+  .pile-card { padding: 12px; }
+  .pile-felt { aspect-ratio: 4 / 5; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pile-modal, .pile-card, .pile-tile, .pile-drawn, .pile-modal.revealing .pile-reveal { animation: none; }
+  .pile-tile { transition: none; }
+}

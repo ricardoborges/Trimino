@@ -288,6 +288,11 @@ export class TriminoGame {
     return this.isTurnOf(playerId) && this.board.size > 0 && this.pool.length > 0 && this.drawsThisTurn < SCORE.maxDrawsPerTurn;
   }
 
+  /** Compras que ainda cabem nesta vez (0 se não for a vez dele). */
+  drawsLeft(playerId: string): number {
+    return this.canDraw(playerId) ? Math.min(this.pool.length, SCORE.maxDrawsPerTurn - this.drawsThisTurn) : 0;
+  }
+
   canPass(playerId: string): boolean {
     return this.isTurnOf(playerId) && this.board.size > 0 && (this.pool.length === 0 || this.drawsThisTurn >= SCORE.maxDrawsPerTurn);
   }
@@ -390,10 +395,13 @@ export class TriminoGame {
     return { points, bonuses, formations };
   }
 
-  draw(playerId: string): Tile {
+  /** Compra uma pedra do monte: a da posição `slot` (escolhida às cegas) ou a de cima. */
+  draw(playerId: string, slot?: number): Tile {
     if (!this.canDraw(playerId)) throw new RuleError("Você não pode comprar agora.");
     const p = this.current;
-    const tile = this.pool.pop()!;
+    const at = slot === undefined ? this.pool.length - 1 : Math.trunc(slot);
+    if (!(at >= 0 && at < this.pool.length)) throw new RuleError("Essa pedra não está no monte.");
+    const [tile] = this.pool.splice(at, 1);
     p.hand.push(tile);
     this.drawsThisTurn++;
     // o −5 da compra é cobrado junto com a jogada (ou ao passar)
