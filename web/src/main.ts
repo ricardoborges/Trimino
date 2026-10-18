@@ -65,6 +65,8 @@ let draggingHand = false;
 let showSeats = true;
 /** Quando termina a comemoração em andamento (a conferência da batida espera por ela). */
 let celebrationEndsAt = 0;
+/** Células já vistas no tabuleiro (para saber qual pedra acabou de ser jogada). */
+let seenCells: Set<string> | null = null;
 /** Conferência da batida da rodada que acabou (chave: rodada + vencedor), mantida entre os estados. */
 let settlement: { key: string; view: Settlement } | null = null;
 const revealedSeats = new Set<string>();
@@ -409,12 +411,16 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
         ghosts.push({ r: f.r, c: f.c, vals: active ? rotated(tile.v, preview!.rot) : null, active });
       }
     board.render(s.board, colorOf, ghosts);
+    const cellKeys = new Set(s.board.map((b) => `${b.r},${b.c}`));
+    const placed = seenCells && s.round === lastRound ? s.board.filter((b) => !seenCells!.has(`${b.r},${b.c}`)) : [];
+    seenCells = cellKeys;
     if (s.round !== lastRound || (s.board.length > 0) !== (lastBoardSize > 0)) board.fit(s.board);
     lastRound = s.round;
     lastBoardSize = s.board.length;
 
     // ponte/mandala nova: destaca as pedras e comemora (depois de a peça terminar de cair)
     const cel = s.celebration;
+    let celebrated: string | null = null;
     if (cel && seenCelebration !== null && cel.seq > seenCelebration) {
       const cells = cel.formations.flatMap((f) => f.cells);
       const kinds = [...new Set(cel.formations.map((f) => f.kind))].map((k) => (k === "ponte" ? "PONTE" : "MANDALA")).join(" + ");
@@ -424,6 +430,7 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
         : `${who ? `${who}: ` : ""}${kinds}! +${cel.points}`;
       if (cel.batida) showNotice(`${who} bateu!`);
       celebrationEndsAt = performance.now() + 480 + CONFETTI_MS;
+      celebrated = cel.playerId;
       setTimeout(() => {
         const at = board.celebrate?.(cells);
         const rect = $("table").getBoundingClientRect();
@@ -525,8 +532,34 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
     if (seenLog.length)
       for (const entry of fresh)
         if (entry.action === "comprou uma peça" && entry.actor && entry.actor !== me?.name) notifyDraw(entry.actor);
+    // pontos de cada pedra jogada sobem dela (a comemoração de ponte/mandala/batida já mostra os seus)
+    if (seenLog.length)
+      for (const b of placed) {
+        if (b.by === celebrated) continue;
+        const who = s.players.find((p) => p.id === b.by)?.name;
+        const sorted = (v: readonly number[]) => [...v].sort().join();
+        const entry = fresh.find((e) => e.action === "jogou" && e.actor === who && e.tile && sorted(e.tile) === sorted(b.vals));
+        if (entry?.points !== undefined) floatPoints(b.r, b.c, entry.points);
+      }
     seenLog = keys;
     labelVideos();
+  }
+
+  /** "+12" (azul) ou "−5" (vermelho) subindo da pedra, depois de ela terminar de cair. */
+  function floatPoints(r: number, c: number, points: number): void {
+    setTimeout(() => {
+      const at = board.cellToScreen?.(r, c);
+      if (!at) return;
+      const el = Object.assign(document.createElement("div"), {
+        className: `float-pts ${points > 0 ? "pos" : points < 0 ? "neg" : "zero"}`,
+        textContent: points < 0 ? `−${-points}` : `+${points}`,
+      });
+      el.setAttribute("aria-hidden", "true");
+      el.style.left = `${at.x}px`;
+      el.style.top = `${at.y}px`;
+      document.body.append(el);
+      el.addEventListener("animationend", () => el.remove());
+    }, 480);
   }
 
   function renderOverlay(s: GameState, isHost: boolean): void {

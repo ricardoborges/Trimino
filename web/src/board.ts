@@ -45,6 +45,8 @@ export interface Board {
   toggleView?(): boolean;
   /** Destaca as pedras de uma ponte/mandala; devolve o centro da formação na tela. */
   celebrate?(cells: { r: number; c: number }[]): { x: number; y: number } | null;
+  /** Centro de uma célula na tela (px, relativo à janela). */
+  cellToScreen?(r: number, c: number): { x: number; y: number };
 }
 
 export interface Ghost {
