@@ -80,7 +80,7 @@ cd android && ./gradlew testDebugUnitTest
 
 - **Landing page** (`/`): apresenta o jogo e tem o login. Dá para criar conta com e-mail e senha, entrar com o Google ou jogar como **convidado**, só com um nome.
 - **Contas:** senha guardada com PBKDF2-SHA256 (100 mil iterações, sal aleatório). A sessão fica num cookie `HttpOnly` de 30 dias, e o D1 guarda só o hash do token. Se alguém entra com o Google usando um e-mail verificado que já tem conta com senha, a conta passa a ser do Google: a senha é apagada e as sessões abertas caem. Como o cadastro com senha não confirma o e-mail, isso impede que quem criou a conta antes com o e-mail de outra pessoa continue entrando nela.
-- **Varanda** (`/varanda`): lista as mesas abertas, quem está sentado em cada uma, a pontuação, os lugares livres e quantos estão assistindo. Dali dá para **sentar**, **assistir** ou **armar uma mesa** (com nome, e privada se quiser; mesa privada não aparece na lista, só entra quem tem o link). A lista atualiza a cada 4 segundos.
+- **Varanda** (`/varanda`): lista as mesas abertas, quem está sentado em cada uma, a pontuação, os lugares livres e quantos estão assistindo. Dali dá para **entrar**, **assistir** ou **armar uma mesa** (com nome, e privada se quiser; mesa privada não aparece na lista, só entra quem tem o link). A lista atualiza a cada 4 segundos.
 - **Link da mesa:** `/mesa/CODIGO`. Quem abre sem ter entrado passa antes pela landing (com a aba de convidado já aberta) e depois cai direto na mesa. Os links antigos `?sala=CODIGO` continuam funcionando.
 - **WhatsApp:** o botão do WhatsApp no topo da mesa e na tela de espera abre o WhatsApp com o convite e o link da mesa prontos.
 

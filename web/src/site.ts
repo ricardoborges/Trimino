@@ -488,7 +488,7 @@ async function refreshMesas(): Promise<void> {
     const empty = document.createElement("div");
     empty.className = "mesas-empty";
     empty.innerHTML = guest
-      ? "<strong>A varanda está vazia.</strong><span>Quando alguém armar uma mesa, ela aparece aqui para você sentar.</span>"
+      ? "<strong>A varanda está vazia.</strong><span>Quando alguém armar uma mesa, ela aparece aqui para você entrar.</span>"
       : "<strong>A varanda está vazia.</strong><span>Arme a primeira mesa e chame a turma pelo WhatsApp.</span>";
     $("mesas").replaceChildren(empty);
     return;
@@ -528,7 +528,7 @@ function mesaCard(m: MesaSummary): HTMLElement {
   const foot = document.createElement("footer");
   foot.append(Object.assign(document.createElement("span"), { className: "muted", textContent: `👁 ${m.spectators} assistindo` }));
   if (m.seatsFree > 0) {
-    const sit = Object.assign(document.createElement("a"), { className: "primary button-link", href: mesaPath(m.code), textContent: "Sentar" });
+    const sit = Object.assign(document.createElement("a"), { className: "primary button-link", href: mesaPath(m.code), textContent: "Entrar" });
     foot.append(sit);
   }
   foot.append(Object.assign(document.createElement("a"), { className: "secondary button-link", href: mesaPath(m.code, true), textContent: "Assistir" }));
