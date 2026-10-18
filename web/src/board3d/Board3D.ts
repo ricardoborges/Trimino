@@ -11,6 +11,10 @@ const PITCH_3D = THREE.MathUtils.degToRad(52);
 const PITCH_TOP = THREE.MathUtils.degToRad(89);
 /** Até onde (na tela, de -1 a 1) o enquadramento automático deixa as pedras chegarem. */
 const FIT_MARGIN = 0.94;
+/** Giro da pedra posicionada: um terço de volta, rápido. */
+const SPIN_MS = 280;
+/** Sentido de um passo de giro (rot + 1) visto de cima. */
+const SPIN_STEP = -(Math.PI * 2) / 3;
 
 /** Contorno fino (anel triangular) e preenchimento de um encaixe livre, deitados na mesa. */
 /** Anel triangular grosso, por cima da borda da peça, usado no destaque de ponte/mandala. */
@@ -62,6 +66,12 @@ export class Board3D implements Board {
   /** Contorno grosso do destaque (mais largo que o contorno dos encaixes livres). */
   private highlightRing = { up: thickRing(true), down: thickRing(false) };
   private ghostCells = new Map<string, Ghost>();
+  /** Pedra posicionada da renderização anterior, para animar quando só o giro muda. */
+  private lastPreview: { key: string; tile?: number; rot?: number } | null = null;
+  /** Giro em andamento: a pedra começa `from` radianos atrás e volta a 0. */
+  private spin = { start: 0, from: 0 };
+  /** Materiais da pedra que outro jogador está posicionando, um por cor. */
+  private ownerMats = new Map<string, THREE.MeshStandardMaterial>();
   private hoverKey: string | null = null;
   private renderedOnce = false;
 
@@ -152,24 +162,60 @@ export class Board3D implements Board {
 
     this.ghostLayer.clear();
     this.ghostCells.clear();
+    let previewed: typeof this.lastPreview = null;
     for (const g of ghosts) {
       const k = cellKey(g.r, g.c);
-      this.ghostCells.set(k, g);
+      // a pedra de outro jogador só aparece; não dá para tocar nela
+      if (!g.owner) this.ghostCells.set(k, g);
+      const color = g.owner ? new THREE.Color(g.owner) : ACCENT;
       const { center } = cellGeometry(g.r, g.c);
       // Encaixe livre: contorno dourado fino + preenchimento quase invisível (sem dica de encaixe).
       const geos = isUp(g.r, g.c) ? this.slotGeo.up : this.slotGeo.down;
-      const fill = new THREE.Mesh(geos.fill, new THREE.MeshBasicMaterial({ color: ACCENT, transparent: true, depthWrite: false }));
-      const ring = new THREE.Mesh(geos.ring, new THREE.MeshBasicMaterial({ color: ACCENT, transparent: true, depthWrite: false }));
+      const fill = new THREE.Mesh(geos.fill, new THREE.MeshBasicMaterial({ color, transparent: true, depthWrite: false }));
+      const ring = new THREE.Mesh(geos.ring, new THREE.MeshBasicMaterial({ color, transparent: true, depthWrite: false }));
       for (const m of [fill, ring]) m.position.set(center.x, 0.003, center.y);
-      fill.userData = { key: k, slotFill: true };
-      ring.userData = { key: k, slotRing: true, active: !!g.vals };
+      fill.userData = { key: k, slotFill: true, owned: !!g.owner };
+      ring.userData = { key: k, slotRing: true, active: !!g.vals, owned: !!g.owner };
       this.ghostLayer.add(fill, ring);
       if (g.vals) {
-        const preview = this.kit.build(g.r, g.c, g.vals, this.kit.previewMat);
+        const preview = this.kit.build(g.r, g.c, g.vals, g.owner ? this.ownerMat(g.owner) : this.kit.previewMat);
         preview.userData = { preview: true };
+        if (g.owner) {
+          // contorno grosso na cor do jogador, em cima da pedra (flutua e gira com ela)
+          const halo = new THREE.Mesh(isUp(g.r, g.c) ? this.highlightRing.up : this.highlightRing.down, new THREE.MeshBasicMaterial({ color, transparent: true }));
+          halo.position.y = THICK + 0.006;
+          halo.userData = { halo: true };
+          preview.add(halo);
+        }
         this.ghostLayer.add(preview);
+        // mesma pedra, mesma célula, outro giro: ela gira até a posição nova
+        const prev = this.lastPreview;
+        if (prev && prev.key === k && prev.tile === g.tile && prev.rot !== undefined && g.rot !== undefined && prev.rot !== g.rot) {
+          const steps = (g.rot - prev.rot + 3) % 3;
+          this.spin = { start: now, from: this.spinOffset(now) + (steps === 1 ? -SPIN_STEP : SPIN_STEP) };
+        }
+        previewed = { key: k, tile: g.tile, rot: g.rot };
       }
     }
+    if (!previewed || previewed.key !== this.lastPreview?.key || previewed.tile !== this.lastPreview?.tile) this.spin.from = 0;
+    this.lastPreview = previewed;
+  }
+
+  private ownerMat(color: string): THREE.MeshStandardMaterial {
+    let mat = this.ownerMats.get(color);
+    if (!mat) {
+      mat = this.kit.tileMat.clone();
+      mat.emissive = new THREE.Color(color);
+      mat.emissiveIntensity = 0.16;
+      this.ownerMats.set(color, mat);
+    }
+    return mat;
+  }
+
+  /** Quanto falta girar (radianos) para a pedra posicionada chegar ao giro atual. */
+  private spinOffset(t: number): number {
+    const p = Math.min(1, (t - this.spin.start) / SPIN_MS);
+    return this.spin.from * Math.pow(1 - p, 3);
   }
 
   /** Enquadra as peças e os espaços vizinhos a elas (onde a próxima peça pode ir). */
@@ -345,10 +391,13 @@ export class Board3D implements Board {
     for (const obj of this.ghostLayer.children) {
       const mat = (obj as THREE.Mesh).material as THREE.MeshBasicMaterial;
       const hovered = obj.userData.key === this.hoverKey;
-      if (obj.userData.slotFill) mat.opacity = hovered ? 0.22 : 0.04 + pulse * 0.04;
-      else if (obj.userData.slotRing) mat.opacity = obj.userData.active || hovered ? 1 : 0.35 + pulse * 0.25;
+      if (obj.userData.slotFill) mat.opacity = obj.userData.owned ? 0.12 + pulse * 0.12 : hovered ? 0.22 : 0.04 + pulse * 0.04;
+      else if (obj.userData.slotRing) mat.opacity = obj.userData.owned ? 0.7 + pulse * 0.3 : obj.userData.active || hovered ? 1 : 0.35 + pulse * 0.25;
       else if (obj.userData.preview) {
         obj.position.y = 0.06 + Math.sin(t / 300) * 0.025;
+        obj.rotation.y = this.spinOffset(t);
+        for (const child of obj.children)
+          if (child.userData.halo) ((child as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.65 + pulse * 0.35;
       }
     }
 

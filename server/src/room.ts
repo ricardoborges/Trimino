@@ -1,4 +1,4 @@
-import { MAX_PLAYERS, MIN_PLAYERS, RuleError, TriminoGame, fullSet, type ClientMessage, type GameState, type MesaSummary, type ServerMessage, type TokenLog } from "@trimino/shared";
+import { MAX_PLAYERS, MIN_PLAYERS, RuleError, TriminoGame, fullSet, rotated, type ClientMessage, type GameState, type Intent, type MesaSummary, type ServerMessage, type Tile, type TokenLog } from "@trimino/shared";
 import { chooseMove, model } from "./ai.ts";
 
 /** O mínimo de um WebSocket que a sala usa (serve o do Workers e o do pacote `ws`). */
@@ -221,6 +221,14 @@ export class Room {
         case "pass":
           this.requireGame().pass(member.id);
           break;
+        case "intent": {
+          // Só o jogador da vez; vai direto para os outros, sem mexer no jogo.
+          const g = this.game;
+          if (!g || g.phase !== "playing" || g.current.id !== member.id) return;
+          const intent = cleanIntent(msg.intent, g.current.hand, g.pool.length);
+          if (intent) for (const m of this.members.values()) if (m !== member && m.ws) send(m.ws, { t: "intent", from: member.id, intent });
+          return;
+        }
         case "signal": {
           // Só entre quem está na videoconferência.
           const target = this.members.get(msg.to);
@@ -526,6 +534,37 @@ export class Room {
 
   broadcast(msg: ServerMessage): void {
     for (const m of this.members.values()) if (m.ws) send(m.ws, msg);
+  }
+}
+
+/**
+ * Intenção do jogador da vez, refeita só com os campos conhecidos. Descarta o que não bate com o jogo
+ * (posição fora da mão, pedra que ele não tem, posição fora do monte).
+ */
+function cleanIntent(raw: Intent, hand: Tile[], pool: number): Intent | null {
+  const int = (n: unknown, max: number) => (Number.isInteger(n) && (n as number) >= 0 && (n as number) < max ? (n as number) : null);
+  switch (raw?.kind) {
+    case "idle":
+      return { kind: "idle" };
+    case "select": {
+      const index = int(raw.index, hand.length);
+      return index === null ? null : { kind: "select", index };
+    }
+    case "preview": {
+      const index = int(raw.index, hand.length);
+      const rot = int(raw.rot, 3);
+      if (index === null || rot === null || !Number.isInteger(raw.r) || !Number.isInteger(raw.c)) return null;
+      // os números têm de ser os de uma pedra da mão, girada
+      const v = raw.vals;
+      const match = Array.isArray(v) && hand.some((t) => [0, 1, 2].some((k) => rotated(t.v, k).every((n, i) => n === v[i])));
+      return match ? { kind: "preview", index, r: raw.r, c: raw.c, rot, vals: [v[0], v[1], v[2]] } : null;
+    }
+    case "pile": {
+      const slot = int(raw.slot, pool);
+      return slot === null ? { kind: "pile" } : { kind: "pile", slot };
+    }
+    default:
+      return null;
   }
 }
 

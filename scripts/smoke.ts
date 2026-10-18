@@ -110,6 +110,32 @@ check("depois do sorteio, a rodada começa", a.state?.phase === "playing");
 check("o vencedor do sorteio começa", a.state?.turnPlayerId === lotteryWinner);
 check("o estado não traz dicas de jogada", !("validMoves" in (a.state!.you as object)));
 
+// Intenções: os outros acompanham o jogador da vez (pedra na mão, posicionando, comprando).
+{
+  const intents: { from: string; kind: string }[] = [];
+  const listen = (raw: WebSocket.RawData) => {
+    const m = JSON.parse(String(raw)) as ServerMessage;
+    if (m.t === "intent") intents.push({ from: m.from, kind: m.intent.kind });
+  };
+  const cur = [a, b].find((c) => c.id === a.state!.turnPlayerId)!;
+  const other = cur === a ? b : a;
+  other.ws.on("message", listen);
+  cur.ws.on("message", listen);
+  const t = cur.state!.you.hand[0];
+  cur.send({ t: "intent", intent: { kind: "select", index: 0 } });
+  cur.send({ t: "intent", intent: { kind: "preview", index: 0, r: 0, c: 0, rot: 1, vals: rotated(t.v, 1) } });
+  cur.send({ t: "intent", intent: { kind: "preview", index: 0, r: 0, c: 0, rot: 0, vals: [9, 9, 9] } });
+  other.send({ t: "intent", intent: { kind: "select", index: 0 } });
+  await wait(200);
+  check("intenção do jogador da vez chega aos outros", intents.filter((i) => i.from === cur.id).map((i) => i.kind).join() === "select,preview");
+  check("pedra que não está na mão é descartada", intents.length === 2);
+  check("intenção de quem não está na vez é ignorada", !intents.some((i) => i.from === other.id));
+  cur.send({ t: "intent", intent: { kind: "idle" } });
+  await wait(100);
+  other.ws.off("message", listen);
+  cur.ws.off("message", listen);
+}
+
 let moves = 0;
 let draws = 0;
 let passes = 0;

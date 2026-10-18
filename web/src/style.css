@@ -136,6 +136,13 @@ label.check { display: flex; align-items: center; gap: 8px; }
   width: 18px; height: 16px; clip-path: polygon(50% 0, 100% 100%, 0 100%);
   background: linear-gradient(160deg, #e9dfc8, #b9ab8c);
 }
+.tile-back.lifted {
+  transform: translateY(-5px) scale(1.15);
+  background: linear-gradient(160deg, #fff6dc, #d9c79c);
+  filter: drop-shadow(0 0 3px var(--owner)) drop-shadow(0 0 6px var(--owner));
+  animation: back-lift 0.25s ease;
+}
+@keyframes back-lift { from { transform: none; } }
 .seat-count {
   font-size: 13px; font-weight: 700; padding: 1px 10px; border-radius: 999px;
   background: var(--accent); color: var(--accent-ink);
@@ -201,6 +208,10 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .ghost:hover .ghost-face { fill: rgba(242, 179, 61, 0.3); }
 .ghost.preview { cursor: pointer; }
 .ghost.preview .tile-face { fill: #fff4d0; stroke: var(--accent); stroke-width: 3; opacity: 0.95; }
+/* pedra que outro jogador está posicionando */
+.ghost.remote { cursor: default; pointer-events: none; animation: remote-pulse 1.1s ease-in-out infinite; }
+.ghost.remote .tile-face { stroke: var(--owner); stroke-width: 4; }
+@keyframes remote-pulse { 50% { opacity: 0.7; } }
 
 .board3d { cursor: grab; }
 
@@ -935,6 +946,15 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .pile-drawn { width: 120px; animation: pile-flip 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2); filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.5)); }
 .pile-drawn img, .pile-drawn svg { width: 100%; display: block; }
 .pile-drawn-label { font-weight: 700; color: var(--accent); }
+/* assistindo outro jogador comprar: nada é clicável; a pedra que ele escolhe se levanta na cor dele */
+.pile-modal.watching .pile-tile { cursor: default; }
+.pile-modal.watching .pile-tile.picked {
+  transform: translate(-50%, -70%) rotate(var(--rot)) scale(1.25);
+  filter: drop-shadow(0 14px 12px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 6px var(--owner)) drop-shadow(0 0 12px var(--owner));
+}
+.pile-modal.watching .pile-drawn-label { color: var(--owner); }
+.pile-drawn.remote { width: 90px; animation: pile-lift 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2); filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 10px var(--owner)); }
+@keyframes pile-lift { from { opacity: 0; transform: translateY(30px) scale(0.8); } }
 @keyframes pile-fade { from { opacity: 0; } }
 @keyframes pile-flip { from { opacity: 0; transform: perspective(400px) rotateY(90deg) scale(0.9); } }
 @media (max-width: 560px) {
@@ -942,6 +962,6 @@ label.check { display: flex; align-items: center; gap: 8px; }
   .pile-felt { aspect-ratio: 4 / 5; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .pile-drawn, .pile-modal.revealing .pile-reveal { animation: none; }
+  .pile-drawn, .pile-drawn.remote, .pile-modal.revealing .pile-reveal { animation: none; }
   .pile-tile { transition: none; }
 }

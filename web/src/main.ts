@@ -1,5 +1,5 @@
 import "./style.css";
-import { rotated, type GameState, type LogEntry, type ServerMessage, type Values } from "@trimino/shared";
+import { rotated, type GameState, type Intent, type LogEntry, type ServerMessage, type Values } from "@trimino/shared";
 import { VALUE_COLORS } from "./board3d/textures.ts";
 import { BoardView, handTileSvg, type Board, type Ghost } from "./board.ts";
 import { Board3D, webglAvailable } from "./board3d/Board3D.ts";
@@ -71,6 +71,10 @@ let seenCells: Set<string> | null = null;
 /** Conferência da batida da rodada que acabou (chave: rodada + vencedor), mantida entre os estados. */
 let settlement: { key: string; view: Settlement } | null = null;
 const revealedSeats = new Set<string>();
+/** O que o jogador da vez (outro) está fazendo: pedra na mão, posicionando no tabuleiro ou comprando. */
+let remote: { from: string; intent: Intent } | null = null;
+/** Última intenção enviada (serializada), para só mandar quando muda. */
+let sentIntent = "";
 
 async function start({ name, room, watch, media: withMedia }: Entry): Promise<void> {
   document.title = `Mesa ${room} · Triminó`;
@@ -151,6 +155,11 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
         break;
       case "state":
         state = msg.state;
+        render();
+        break;
+      case "intent":
+        if (msg.from !== state?.turnPlayerId) break;
+        remote = msg.intent.kind === "idle" ? null : { from: msg.from, intent: msg.intent };
         render();
         break;
       case "error":
@@ -303,7 +312,29 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
   $("play").onclick = play;
   $("rotate").onclick = rotate;
   // Comprar: abre o monte espalhado e o jogador escolhe uma pedra (virada para baixo).
-  const drawPile = new DrawPile($("draw-modal"), (slot) => conn.send({ t: "draw", slot }), tileVisual, () => state?.you.hand.map((t) => t.id) ?? []);
+  const drawPile = new DrawPile($("draw-modal"), (slot) => conn.send({ t: "draw", slot }), tileVisual, () => state?.you.hand.map((t) => t.id) ?? [], () => syncIntent());
+
+  /**
+   * Conta aos outros o que você está fazendo na sua vez (pedra escolhida, onde e como ela está no
+   * tabuleiro, monte aberto), como numa mesa de verdade. Só manda quando muda.
+   */
+  function syncIntent(): void {
+    const s = state;
+    if (!s) return;
+    const myTurn = s.phase === "playing" && s.turnPlayerId === s.you.id;
+    const index = selectedTile === null ? -1 : handOrder.indexOf(selectedTile);
+    const tile = s.you.hand.find((t) => t.id === selectedTile);
+    const intent: Intent =
+      !myTurn ? { kind: "idle" } :
+      drawPile.mine ? { kind: "pile", slot: drawPile.pickedSlot } :
+      preview && tile && index >= 0 ? { kind: "preview", index, r: preview.r, c: preview.c, rot: preview.rot, vals: rotated(tile.v, preview.rot) } :
+      index >= 0 ? { kind: "select", index } :
+      { kind: "idle" };
+    const key = JSON.stringify(intent);
+    if (key === sentIntent) return;
+    sentIntent = key;
+    if (myTurn) conn.send({ t: "intent", intent });
+  }
   $("draw").onclick = () => state && drawPile.show(state);
   $("pass").onclick = () => conn.send({ t: "pass" });
   $("fit").onclick = () => state && board.fit(state.board);
@@ -400,6 +431,10 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
 
     if (selectedTile !== null && !s.you.hand.some((t) => t.id === selectedTile)) selectedTile = null;
     if (!myTurn || selectedTile === null || (preview && !isFrontier(preview.r, preview.c))) preview = null;
+    // o que o jogador da vez está fazendo vale só enquanto a vez for dele
+    if (remote && (remote.from !== s.turnPlayerId || myTurn)) remote = null;
+    const watched = remote?.intent;
+    const turnColor = s.turnPlayerId ? colorOf(s.turnPlayerId) : "";
 
     // tabuleiro
     const ghosts: Ghost[] = [];
@@ -407,8 +442,11 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
     if (myTurn && tile)
       for (const f of s.you.frontier) {
         const active = preview?.r === f.r && preview?.c === f.c;
-        ghosts.push({ r: f.r, c: f.c, vals: active ? rotated(tile.v, preview!.rot) : null, active });
+        ghosts.push({ r: f.r, c: f.c, vals: active ? rotated(tile.v, preview!.rot) : null, active, rot: active ? preview!.rot : undefined, tile: tile.id });
       }
+    // a pedra que o outro jogador está segurando sobre o tabuleiro, na cor dele
+    if (watched?.kind === "preview")
+      ghosts.push({ r: watched.r, c: watched.c, vals: watched.vals, active: true, owner: turnColor, rot: watched.rot, tile: watched.index });
     board.render(s.board, colorOf, ghosts);
     const cellKeys = new Set(s.board.map((b) => `${b.r},${b.c}`));
     const placed = seenCells && s.round === lastRound ? s.board.filter((b) => !seenCells!.has(`${b.r},${b.c}`)) : [];
@@ -472,12 +510,16 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
     const turnName = s.players.find((p) => p.id === s.turnPlayerId)?.name;
     const batedor = s.finalLap && s.players.find((p) => p.id === s.finalLap!.batedorId)?.name;
     renderWatchers(s, !!me?.isHost);
+    const doing =
+      watched?.kind === "pile" ? " · comprando do monte" :
+      watched?.kind === "preview" ? " · posicionando uma peça" :
+      watched?.kind === "select" ? " · escolheu uma peça" : "";
     $("banner").textContent =
       s.phase !== "playing" ? "" :
-      me?.spectator ? `Você está assistindo · vez de ${turnName}` :
-      batedor ? (myTurn ? `${batedor} bateu! Sua última vez.` : `${batedor} bateu! Última vez de ${turnName}.`) :
+      me?.spectator ? `Você está assistindo · vez de ${turnName}${doing}` :
+      batedor ? (myTurn ? `${batedor} bateu! Sua última vez.` : `${batedor} bateu! Última vez de ${turnName}${doing}.`) :
       myTurn ? (selectedTile === null ? (s.board.length ? "Sua vez! Escolha uma peça." : "Sua vez! Abra com a peça que quiser.") : preview ? "Toque de novo para girar, depois Jogar." : "Toque num espaço livre.") :
-      `Vez de ${turnName}`;
+      `Vez de ${turnName}${doing}`;
     $("banner").classList.toggle("mine", myTurn);
     document.querySelector(".dock")!.classList.toggle("mine", myTurn);
     renderOverlay(s, !!me?.isHost);
@@ -485,8 +527,12 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
     $("restart").hidden = !(me?.isHost && midGame);
     if ($("restart").hidden) setRestartOpen(false);
     $("restart-round").toggleAttribute("disabled", s.phase !== "playing");
-    renderSeats(s);
+    renderSeats(s, watched && watched.kind !== "pile" && watched.kind !== "idle" ? watched.index : null);
     drawPile.update(s);
+    // monte aberto pelo jogador da vez: os outros veem o mesmo monte, só olhando
+    const turnPlayer = s.players.find((p) => p.id === s.turnPlayerId);
+    if (watched?.kind === "pile" && turnPlayer) drawPile.watch(s, { name: turnPlayer.name, color: turnColor }, watched.slot);
+    else drawPile.unwatch();
 
     // mão (não redesenha no meio de um arrasto; render() é chamado de novo quando o jogador solta)
     const pos = new Map(handOrder.map((id, i) => [id, i]));
@@ -542,6 +588,7 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
       }
     seenLog = keys;
     labelVideos();
+    syncIntent();
   }
 
   /** "+12" (azul) ou "−5" (vermelho) subindo da pedra, depois de ela terminar de cair. */
@@ -816,9 +863,9 @@ function colorOfSeat(s: GameState, playerId: string): string {
 
 /**
  * Adversários: os adversários empilhados à esquerda do tabuleiro, na ordem da vez, com a mão virada para baixo.
- * Quem está jogando ganha uma borda dourada.
+ * Quem está jogando ganha uma borda dourada, e a pedra que ele pegou da mão fica levantada.
  */
-function renderSeats(s: GameState): void {
+function renderSeats(s: GameState, lifted: number | null): void {
   const layer = $("seats");
   const inRound = s.phase === "playing" || s.phase === "roundOver";
   $("seats-toggle").hidden = !inRound;
@@ -844,7 +891,8 @@ function renderSeats(s: GameState): void {
       tiles.className = "seat-tiles";
       for (let k = 0; k < p.handCount; k++) {
         const back = document.createElement("span");
-        back.className = "tile-back";
+        // a pedra que o jogador da vez pegou da mão fica levantada
+        back.className = `tile-back${p.id === s.turnPlayerId && k === lifted ? " lifted" : ""}`;
         tiles.append(back);
       }
       seat.append(name, tiles);

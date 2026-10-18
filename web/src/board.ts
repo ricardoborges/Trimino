@@ -54,6 +54,11 @@ export interface Ghost {
   c: number;
   vals: Values | null; // null = apenas destaca a célula
   active: boolean;
+  /** Pedra que outro jogador está posicionando: na cor dele e sem clique. */
+  owner?: string;
+  /** Giro e qual pedra é (para animar o giro quando só ele muda). */
+  rot?: number;
+  tile?: number;
 }
 
 export class BoardView implements Board {
@@ -81,8 +86,13 @@ export class BoardView implements Board {
     }
     for (const gh of ghosts) {
       const pts = corners(gh.r, gh.c);
-      const g = gh.vals ? tileShape(pts, gh.vals, `ghost preview${gh.active ? " active" : ""}`) : el("g", { class: "ghost" });
+      const g = gh.vals ? tileShape(pts, gh.vals, `ghost preview${gh.active ? " active" : ""}${gh.owner ? " remote" : ""}`) : el("g", { class: "ghost" });
       if (!gh.vals) g.append(el("polygon", { points: pts.map((p) => p.join(",")).join(" "), class: "ghost-face" }));
+      if (gh.owner) {
+        g.style.setProperty("--owner", gh.owner);
+        this.world.append(g);
+        continue;
+      }
       g.addEventListener("click", (e) => {
         e.stopPropagation();
         if (!this.dragged) this.onCellClick(gh.r, gh.c);

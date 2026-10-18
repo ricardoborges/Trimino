@@ -4,10 +4,15 @@
 //
 // As pedras ficam no mesmo lugar a rodada inteira: a cada compra some só a escolhida, e o monte
 // vai esvaziando. Cada pedra tem a sua casa numa grade frouxa, com folga para girar sem encostar.
+//
+// Quando outro jogador abre o monte, os demais veem o mesmo modal "assistindo": a pedra que ele
+// escolhe se levanta na cor dele e, quando a compra chega, sai do monte (sem mostrar a face).
 
 import type { GameState, Values } from "@trimino/shared";
 
 const REVEAL_MS = 1200;
+/** Quem assiste vê a pedra escolhida levantada por pelo menos este tempo antes de ela sair do monte. */
+const PICK_SHOW_MS = 700;
 const SVG = "http://www.w3.org/2000/svg";
 /** Uma pedra girada cabe num círculo de diâmetro lado × 2/√3 ≈ 1,155 × lado; mais um respiro. */
 const SPIN_ROOM = 1.22;
@@ -45,6 +50,7 @@ interface Spot {
 export class DrawPile {
   private readonly root: HTMLElement;
   private readonly pile: HTMLElement;
+  private readonly title: HTMLElement;
   private readonly hint: HTMLElement;
   private readonly reveal: HTMLElement;
   /** Rodada (e tamanho inicial do monte) a que as casas pertencem. */
@@ -57,44 +63,111 @@ export class DrawPile {
   private pending: { hand: Set<number>; slot: number; timer: number } | null = null;
   private revealing = false;
   open = false;
+  /** Outro jogador está comprando e este modal só mostra o que ele faz. */
+  private watching: { name: string; slot?: number } | null = null;
+  /** O observador fechou o modal: fica fechado até o jogador abrir o monte de novo. */
+  private dismissed = false;
+  /** Última pedra que outro jogador escolheu (posição no monte), para tirar a certa quando a compra chegar. */
+  private remoteSlot: number | null = null;
+  /** O jogador fechou o monte enquanto a compra dele ainda aparecia: fecha quando ela terminar. */
+  private closeAfterReveal = false;
+  /** Quando a pedra escolhida pelo outro jogador se levantou, e a compra dele esperando esse tempo passar. */
+  private pickedAt = 0;
+  private deferred = { timer: 0, state: null as GameState | null };
 
   constructor(
     root: HTMLElement,
     private readonly onPick: (slot: number) => void,
     private readonly tileVisual: (v: Values) => Element,
     private readonly handIds: () => number[],
+    /** Abriu, fechou ou escolheu uma pedra (para contar aos outros jogadores). */
+    private readonly onChange: () => void = () => {},
   ) {
     this.root = root;
     this.pile = root.querySelector(".pile")!;
+    this.title = root.querySelector("#pile-title")!;
     this.hint = root.querySelector(".pile-hint")!;
     this.reveal = root.querySelector(".pile-reveal")!;
     root.addEventListener("click", (e) => {
-      if (e.target === root || (e.target as HTMLElement).closest(".pile-close")) this.hide();
+      if (e.target === root || (e.target as HTMLElement).closest(".pile-close")) this.close();
     });
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && this.open) this.hide();
+      if (e.key === "Escape" && this.open) this.close();
     });
+  }
+
+  /** O monte aberto pelo próprio jogador (não o de outro, assistindo). */
+  get mine(): boolean {
+    return this.open && !this.watching;
+  }
+
+  /** A pedra que o próprio jogador escolheu, enquanto a compra não chega. */
+  get pickedSlot(): number | undefined {
+    return this.mine ? this.pending?.slot : undefined;
   }
 
   show(s: GameState): void {
     if (!s.you.canDraw) return;
+    this.watching = null;
+    this.title.textContent = "Escolha uma pedra do monte";
+    this.root.classList.remove("watching", "revealing");
+    this.revealing = false;
     this.open = true;
     this.root.hidden = false;
     this.update(s);
+    this.onChange();
+  }
+
+  /** Fechado por quem está olhando (✕, Esc ou fora do quadro). */
+  private close(): void {
+    if (this.watching) this.dismissed = true;
+    this.hide();
   }
 
   hide(): void {
     if (this.pending) clearTimeout(this.pending.timer);
+    const mine = this.mine;
+    clearTimeout(this.deferred.timer);
     this.pending = null;
     this.revealing = false;
+    this.watching = null;
     this.open = false;
     this.root.hidden = true;
-    this.root.classList.remove("revealing");
+    this.root.classList.remove("revealing", "watching");
+    for (const b of this.pile.querySelectorAll(".picked")) b.classList.remove("picked");
+    if (mine) this.onChange();
+  }
+
+  /** Outro jogador está com o monte aberto (e talvez já escolheu `slot`): mostra o mesmo monte, só para olhar. */
+  watch(s: GameState, who: { name: string; color: string }, slot?: number): void {
+    if (this.mine) return;
+    if (slot !== undefined) this.remoteSlot = slot;
+    if (this.dismissed) return;
+    if (slot !== undefined && slot !== this.watching?.slot) this.pickedAt = performance.now();
+    if (!this.watching) {
+      this.open = true;
+      this.root.hidden = false;
+      this.root.classList.add("watching");
+      this.title.textContent = `${who.name} está comprando`;
+    }
+    this.watching = { name: who.name, slot };
+    this.root.style.setProperty("--owner", who.color);
+    this.update(s);
+  }
+
+  /** O jogador fechou o monte (ou a vez passou). */
+  unwatch(): void {
+    this.dismissed = false;
+    if (!this.watching) return;
+    // terminando de mostrar a compra: fecha quando acabar
+    if (this.revealing) this.closeAfterReveal = true;
+    else this.hide();
   }
 
   /** Chamado a cada estado novo (com o modal aberto ou não, para acompanhar o monte). */
   update(s: GameState): void {
     if (this.revealing) return;
+    if (this.watching) return this.updateWatching(s);
     if (this.pending) {
       const drawn = s.you.hand.find((t) => !this.pending!.hand.has(t.id));
       if (drawn) {
@@ -111,7 +184,29 @@ export class DrawPile {
     if (!this.pending) for (const b of this.pile.querySelectorAll("button")) b.disabled = false;
   }
 
-  /** Acompanha o tamanho do monte: rodada nova espalha de novo; compras dos outros (a de cima) somem do fim. */
+  /** Assistindo: a pedra escolhida levantada e, quando a compra chega, ela sai do monte. */
+  private updateWatching(s: GameState): void {
+    // a compra chegou logo depois da escolha: deixa a pedra levantada um instante antes de tirá-la
+    const wait = this.pickedAt + PICK_SHOW_MS - performance.now();
+    clearTimeout(this.deferred.timer);
+    if (s.poolCount < this.alive.length && wait > 0) {
+      this.deferred.state = s;
+      this.deferred.timer = window.setTimeout(() => {
+        if (this.watching && !this.revealing && this.deferred.state) this.updateWatching(this.deferred.state);
+      }, wait);
+      return;
+    }
+    const before = this.alive.length;
+    this.sync(s);
+    const w = this.watching!;
+    for (const b of this.pile.querySelectorAll("button")) b.disabled = true;
+    if (this.alive.length < before) return this.showRemoteDrawn();
+    const spot = w.slot !== undefined ? this.alive[w.slot] : undefined;
+    for (const b of this.pile.querySelectorAll<HTMLElement>(".pile-tile")) b.classList.toggle("picked", Number(b.dataset.spot) === spot);
+    this.hint.textContent = spot !== undefined ? `${w.name} escolheu esta pedra…` : `${w.name} está escolhendo uma pedra do monte`;
+  }
+
+  /** Acompanha o tamanho do monte: rodada nova espalha de novo; compras dos outros tiram a pedra que eles escolheram. */
   private sync(s: GameState): void {
     const round = `${s.room}:${s.round}`;
     if (!this.roundKey.startsWith(round + ":") || s.poolCount > this.alive.length) {
@@ -119,7 +214,12 @@ export class DrawPile {
       this.roundKey = `${round}:${s.poolCount}`;
       this.scatter(s.poolCount);
     }
-    while (this.alive.length > s.poolCount) this.alive.pop();
+    while (this.alive.length > s.poolCount) {
+      // compra de outro jogador: a pedra que ele escolheu (os robôs pegam a de cima)
+      if (this.remoteSlot !== null && this.remoteSlot < this.alive.length) this.alive.splice(this.remoteSlot, 1);
+      else this.alive.pop();
+      this.remoteSlot = null;
+    }
     if (this.open) this.draw();
   }
 
@@ -181,7 +281,7 @@ export class DrawPile {
 
   private pick(button: HTMLButtonElement, spot: number): void {
     const slot = this.alive.indexOf(spot);
-    if (this.pending || slot < 0) return;
+    if (this.pending || this.watching || slot < 0) return;
     this.pending = {
       hand: new Set(this.handIds()),
       slot,
@@ -190,10 +290,12 @@ export class DrawPile {
         this.pending = null;
         for (const b of this.pile.querySelectorAll("button")) b.disabled = false;
         button.classList.remove("picked");
+        this.onChange();
       }, 4000),
     };
     for (const b of this.pile.querySelectorAll("button")) b.disabled = true;
     button.classList.add("picked");
+    this.onChange();
     this.onPick(slot);
   }
 
@@ -209,5 +311,27 @@ export class DrawPile {
     this.reveal.replaceChildren(label, face);
     this.root.classList.add("revealing");
     setTimeout(() => this.hide(), REVEAL_MS);
+  }
+
+  /** Outro jogador comprou: a pedra escolhida vai para o meio (virada para baixo) e o monte segue aberto enquanto ele olhar. */
+  private showRemoteDrawn(): void {
+    const name = this.watching!.name;
+    this.revealing = true;
+    this.closeAfterReveal = false;
+    const back = document.createElement("div");
+    back.className = "pile-drawn remote";
+    back.append(tileBack());
+    const label = Object.assign(document.createElement("span"), { className: "pile-drawn-label", textContent: `${name} comprou esta pedra` });
+    this.reveal.replaceChildren(label, back);
+    this.root.classList.add("revealing");
+    setTimeout(() => {
+      if (!this.revealing) return; // fechado ou reaberto no meio
+      this.revealing = false;
+      this.root.classList.remove("revealing");
+      if (this.closeAfterReveal || !this.watching) return this.hide();
+      this.watching = { name: this.watching.name };
+      for (const b of this.pile.querySelectorAll(".picked")) b.classList.remove("picked");
+      this.hint.textContent = `${name} está escolhendo uma pedra do monte`;
+    }, REVEAL_MS);
   }
 }

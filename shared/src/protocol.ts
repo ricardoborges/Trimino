@@ -162,6 +162,19 @@ export interface GameState {
   };
 }
 
+/**
+ * O que o jogador da vez está fazendo antes de confirmar, para os outros acompanharem como numa mesa de verdade.
+ * `index` é a posição da pedra na mão dele (na ordem que ele arrumou), contando da esquerda.
+ */
+export type Intent =
+  | { kind: "idle" }
+  /** Pegou uma pedra da mão. */
+  | { kind: "select"; index: number }
+  /** Segura a pedra sobre o tabuleiro, na célula (r, c), com o giro `rot` e os números `vals` (como ficariam ali). */
+  | { kind: "preview"; index: number; r: number; c: number; rot: number; vals: Values }
+  /** Abriu o monte para comprar; `slot`: a pedra que escolheu (posição no monte), enquanto a compra não chega. */
+  | { kind: "pile"; slot?: number };
+
 export interface IceServer {
   urls: string | string[];
   username?: string;
@@ -202,6 +215,8 @@ export type ClientMessage =
   /** `slot`: qual pedra do monte (virada para baixo) o jogador escolheu; sem ele, a de cima. */
   | { t: "draw"; slot?: number }
   | { t: "pass" }
+  /** Jogador da vez: o que está fazendo agora (o servidor repassa para os outros; não muda o jogo). */
+  | { t: "intent"; intent: Intent }
   | { t: "signal"; to: string; data: SignalData };
 
 export type ServerMessage =
@@ -218,6 +233,8 @@ export type ServerMessage =
   | { t: "notice"; message: string }
   | { t: "state"; state: GameState }
   | { t: "peerLeft"; id: string }
+  /** O que o jogador da vez (`from`) está fazendo; vale até a próxima intenção ou até a vez passar. */
+  | { t: "intent"; from: string; intent: Intent }
   | { t: "signal"; from: string; data: SignalData }
   | { t: "error"; message: string };
 
