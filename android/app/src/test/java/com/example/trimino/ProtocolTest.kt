@@ -2,6 +2,7 @@ package com.example.trimino
 
 import com.example.trimino.game.Geometry
 import com.example.trimino.net.ClientMessage
+import com.example.trimino.net.Intent
 import com.example.trimino.net.ProtocolJson
 import com.example.trimino.net.ServerMessage
 import com.example.trimino.net.SignalData
@@ -14,7 +15,12 @@ import org.junit.Test
 class ProtocolTest {
   @Test
   fun encodesClientMessagesLikeTheServerExpects() {
-    assertEquals("""{"t":"draw"}""", ProtocolJson.encodeToString<ClientMessage>(ClientMessage.Draw))
+    assertEquals("""{"t":"draw"}""", ProtocolJson.encodeToString<ClientMessage>(ClientMessage.Draw()))
+    assertEquals("""{"t":"draw","slot":3}""", ProtocolJson.encodeToString<ClientMessage>(ClientMessage.Draw(3)))
+    assertEquals(
+      """{"t":"intent","intent":{"kind":"preview","index":1,"r":0,"c":1,"rot":2,"vals":[1,2,3]}}""",
+      ProtocolJson.encodeToString<ClientMessage>(ClientMessage.SendIntent(Intent.Preview(1, 0, 1, 2, listOf(1, 2, 3)))),
+    )
     val signal = ProtocolJson.encodeToString<ClientMessage>(ClientMessage.Signal("ab", SignalData.Offer("v=0")))
     assertEquals("""{"t":"signal","to":"ab","data":{"type":"offer","sdp":"v=0"}}""", signal)
   }

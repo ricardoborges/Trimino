@@ -11,14 +11,20 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 
-/** WebSocket com reconexão automática; reenvia o `join` a cada conexão. Callbacks chegam na main thread. */
+/**
+ * WebSocket com reconexão automática; reenvia o `join` a cada conexão. Callbacks chegam na main thread.
+ * `http` é o cliente da [Api]: leva o cookie da sessão, e o servidor reconhece a conta na mesa.
+ */
 class GameSocket(
+  http: OkHttpClient,
   private val url: String,
   private val join: ClientMessage.Join,
   private val onMessage: (ServerMessage) -> Unit,
   private val onStatus: (Boolean) -> Unit,
+  /** A mesa recusou a entrada (ex.: convidado numa mesa vazia); não adianta tentar de novo. */
+  private val onRefused: (String) -> Unit,
 ) {
-  private val client = OkHttpClient.Builder().pingInterval(20, TimeUnit.SECONDS).build()
+  private val client = http.newBuilder().pingInterval(20, TimeUnit.SECONDS).build()
   private val main = Handler(Looper.getMainLooper())
   private var ws: WebSocket? = null
   private var retry = 0
@@ -67,7 +73,7 @@ class GameSocket(
     if (socket !== ws) return
     main.post { onStatus(false) }
     // 4003: convidado tentando abrir uma mesa vazia; não adianta tentar de novo.
-    if (code == 4003) main.post { onMessage(ServerMessage.Error(reason)) }
+    if (code == 4003) main.post { onRefused(reason) }
     if (closed || code == 4000 || code == 4003) return
     val delay = minOf(10_000L, 500L shl minOf(retry++, 5))
     main.postDelayed(::open, delay)
@@ -81,7 +87,6 @@ class GameSocket(
     closed = true
     main.removeCallbacksAndMessages(null)
     ws?.close(1000, null)
-    client.dispatcher.executorService.shutdown()
   }
 
   private companion object {

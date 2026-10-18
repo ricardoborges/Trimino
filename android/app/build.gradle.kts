@@ -1,3 +1,5 @@
+import java.net.URI
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
@@ -13,6 +15,13 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+
+        // Endereço do site (o mesmo da Web). Troque com -Ptrimino.server=https://seu-dominio no build ou na tela de
+        // entrada do app. O padrão é o wrangler dev visto de dentro do emulador (10.0.2.2 é o localhost da máquina).
+        val server = (findProperty("trimino.server") as String?) ?: "http://10.0.2.2:8787"
+        buildConfigField("String", "DEFAULT_SERVER", "\"$server\"")
+        // Os links de convite (https://<host>/mesa/CODIGO) abrem direto no app.
+        manifestPlaceholders["triminoHost"] = URI(server).host
     }
 
     buildTypes {
@@ -28,7 +37,7 @@ android {
     buildFeatures {
       compose = true
       aidl = false
-      buildConfig = false
+      buildConfig = true
       shaders = false
     }
 
@@ -61,6 +70,7 @@ dependencies {
   implementation(libs.androidx.compose.ui)
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.compose.material3)
+  implementation(libs.androidx.compose.material.icons)
   // Tooling
   debugImplementation(libs.androidx.compose.ui.tooling)
   // Instrumented tests
@@ -81,4 +91,9 @@ dependencies {
   implementation(libs.okhttp)
   implementation(libs.kotlinx.serialization.json)
   implementation(libs.stream.webrtc)
+
+  // Login com Google (Credential Manager)
+  implementation(libs.androidx.credentials)
+  implementation(libs.androidx.credentials.play.services)
+  implementation(libs.googleid)
 }

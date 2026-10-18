@@ -1,7 +1,7 @@
 // Worker do Triminó: API do site (contas, varanda, estatísticas), login com Google e o WebSocket
 // das mesas, que é repassado ao Durable Object da mesa. O resto são os arquivos do cliente (assets).
 
-import { HttpError, currentUser, googleCallback, googleEnabled, googleStart, json, login, logout, signup, type GoogleConfig } from "./auth.ts";
+import { HttpError, currentUser, googleCallback, googleEnabled, googleIdToken, googleStart, json, login, logout, signup, type GoogleConfig } from "./auth.ts";
 import { aiEnabled } from "./ai.ts";
 import type { Visitor } from "./mesa.ts";
 import { listMesas, playerStats, ranking } from "./store.ts";
@@ -43,7 +43,8 @@ export default {
       const route = `${req.method} ${url.pathname}`;
       switch (route) {
         case "GET /api/config":
-          return json({ google: googleEnabled(google), ai: aiEnabled() });
+          // googleClientId: o app Android pede ao Google um ID token emitido para este client ID (o da Web).
+          return json({ google: googleEnabled(google), googleClientId: google.clientId ?? null, ai: aiEnabled() });
         case "GET /api/me": {
           const user = await currentUser(env.DB, req);
           return json({ user, stats: user ? await playerStats(env.DB, user.id) : null });
@@ -52,6 +53,8 @@ export default {
           return await signup(env.DB, sameOrigin(req, google.publicUrl));
         case "POST /api/login":
           return await login(env.DB, sameOrigin(req, google.publicUrl));
+        case "POST /api/google":
+          return await googleIdToken(env.DB, google, sameOrigin(req, google.publicUrl));
         case "POST /api/logout":
           return await logout(env.DB, sameOrigin(req, google.publicUrl));
         case "GET /api/mesas":

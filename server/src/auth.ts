@@ -219,8 +219,49 @@ export async function googleCallback(db: D1Database, g: GoogleConfig, req: Reque
   const { access_token } = (await tokenRes.json()) as { access_token: string };
   const infoRes = await fetch("https://openidconnect.googleapis.com/v1/userinfo", { headers: { authorization: `Bearer ${access_token}` } });
   if (!infoRes.ok) return fail("Não foi possível ler sua conta do Google.");
-  const info = (await infoRes.json()) as { sub: string; email?: string; email_verified?: boolean; name?: string; picture?: string };
+  const info = (await infoRes.json()) as GoogleProfile;
+  const user = await googleUser(db, info);
+  const headers = new Headers({ location: next });
+  headers.append("set-cookie", await startSession(db, req, user.id));
+  headers.append("set-cookie", cookie(req, OAUTH_COOKIE, "", 0));
+  return new Response(null, { status: 302, headers });
+}
 
+interface GoogleProfile {
+  sub: string;
+  email?: string;
+  email_verified?: boolean;
+  name?: string;
+  picture?: string;
+}
+
+/**
+ * App Android: o Credential Manager entrega um ID token do Google emitido para o nosso client ID (o da Web).
+ * O tokeninfo do Google confere a assinatura e a validade; aqui conferimos para quem ele foi emitido.
+ * Responde como o login com senha: o usuário no corpo e a sessão no Set-Cookie.
+ */
+export async function googleIdToken(db: D1Database, g: GoogleConfig, req: Request): Promise<Response> {
+  if (!g.clientId) throw new HttpError(404, "Login com Google não configurado.");
+  const idToken = String((await readJson(req)).idToken ?? "");
+  if (!idToken || idToken.length > 4096) throw new HttpError(400, "Token do Google inválido.");
+  const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+  if (!res.ok) throw new HttpError(401, "Não foi possível entrar com o Google.");
+  const claims = (await res.json()) as Record<string, string | undefined>;
+  const issuerOk = claims.iss === "accounts.google.com" || claims.iss === "https://accounts.google.com";
+  if (claims.aud !== g.clientId || !issuerOk || !claims.sub || Number(claims.exp) * 1000 < Date.now())
+    throw new HttpError(401, "Não foi possível entrar com o Google.");
+  const user = await googleUser(db, {
+    sub: claims.sub,
+    email: claims.email,
+    email_verified: claims.email_verified === "true",
+    name: claims.name,
+    picture: claims.picture,
+  });
+  return json({ user: publicUser(user) }, { headers: { "set-cookie": await startSession(db, req, user.id) } });
+}
+
+/** Conta ligada ao perfil do Google: a mesma de antes, a de mesmo e-mail (confirmado) ou uma nova. */
+async function googleUser(db: D1Database, info: GoogleProfile): Promise<UserRow> {
   const email = info.email_verified && info.email ? info.email.toLowerCase() : null;
   let user = await db.prepare("SELECT * FROM users WHERE google_sub = ?").bind(info.sub).first<UserRow>();
   if (!user && email) {
@@ -244,10 +285,7 @@ export async function googleCallback(db: D1Database, g: GoogleConfig, req: Reque
       .bind(user.id, user.email, user.name, user.google_sub, user.avatar_url, Date.now())
       .run();
   }
-  const headers = new Headers({ location: next });
-  headers.append("set-cookie", await startSession(db, req, user.id));
-  headers.append("set-cookie", cookie(req, OAUTH_COOKIE, "", 0));
-  return new Response(null, { status: 302, headers });
+  return user;
 }
 
 export { json };

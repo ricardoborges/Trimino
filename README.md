@@ -59,12 +59,12 @@ Para publicar à mão, sem o CI: `npm run deploy`.
 **Login com Google:** crie um "ID do cliente OAuth" do tipo aplicativo da Web no Google Cloud Console e cadastre `<PUBLIC_URL>/auth/google/callback` como URI de redirecionamento. Sem `GOOGLE_CLIENT_ID`, o botão do Google não aparece.
 
 **Android:** abra a pasta `android/` no Android Studio ou rode `./gradlew assembleDebug`.
-No lobby do app, informe o endereço do servidor:
-- `ws://10.0.2.2:8787/ws` no emulador;
-- `ws://<IP-da-máquina>:8787/ws` num aparelho na mesma rede (rode `npx wrangler dev --ip 0.0.0.0`);
-- `wss://<seu-domínio>/ws` em produção.
+O app segue o site: entrada com conta (e-mail e senha), **Google** ou convidado, a **varanda** (mesas abertas, armar mesa, entrar por código, assistir, estatísticas e ranking) e a mesa, como jogador ou espectador. A sessão é o mesmo cookie do site, guardado no aparelho e enviado também no WebSocket.
 
-O app entra como convidado e ainda não tem a varanda nem os pedidos de videoconferência dos espectadores.
+- Endereço do site: o padrão é `http://10.0.2.2:8787` (wrangler dev visto do emulador). Para outro, compile com `./gradlew assembleRelease -Ptrimino.server=https://<seu-domínio>`, ou toque em "Servidor" no rodapé da tela de entrada.
+- Num aparelho pelo USB: `adb reverse tcp:8787 tcp:8787` e use `http://localhost:8787`.
+- **Links de convite:** `https://<site>/mesa/CODIGO` abre direto no app (o host vem do `trimino.server`).
+- **Login com Google no app:** usa o Credential Manager, que pede ao Google um ID token emitido para o client ID da Web (`GOOGLE_CLIENT_ID`, que o app lê em `/api/config`). O app manda o token para `POST /api/google`, e o servidor confere no Google para quem ele foi emitido. No Google Cloud Console, no mesmo projeto do client da Web, crie também um "ID do cliente OAuth" do tipo **Android** com o nome do pacote (`com.example.trimino`) e o SHA-1 do certificado que assina o APK (`./gradlew signingReport` mostra o da chave de debug). Sem ele, a escolha de conta do Google falha no app.
 
 ### Testes
 
