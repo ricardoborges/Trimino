@@ -380,10 +380,6 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
     }, 200);
   };
 
-  $("room-code").onclick = async () => {
-    await navigator.clipboard?.writeText(mesaUrl(room)).catch(() => {});
-    toast("Link da mesa copiado!");
-  };
   document.addEventListener("keydown", (e) => {
     if ((e.target as HTMLElement).tagName === "INPUT") return;
     if (e.key === "r" || e.key === "R") rotate();
@@ -440,7 +436,6 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
     seenCelebration = cel?.seq ?? 0;
 
     // placar (espectadores ficam no painel próprio)
-    $("room-code").textContent = s.title ? `${s.title} · ${s.room}` : `Mesa ${s.room}`;
     $<HTMLAnchorElement>("share-wa").href = whatsappUrl(s.room, s.title);
     if (s.title) document.title = `${s.title} · Triminó`;
     // anfitrião, durante a partida: ✕ para tirar um jogador (ex.: sumiu sem avisar); a vez passa se for dele
