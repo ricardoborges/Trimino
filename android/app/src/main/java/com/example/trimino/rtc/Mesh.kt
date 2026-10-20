@@ -7,11 +7,13 @@ import android.os.Looper
 import android.util.Log
 import com.example.trimino.net.IceServer
 import com.example.trimino.net.SignalData
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import org.webrtc.AudioSource
 import org.webrtc.AudioTrack
 import org.webrtc.Camera2Enumerator
 import org.webrtc.CameraVideoCapturer
@@ -47,13 +49,14 @@ class Mesh(
   val egl: EglBase = EglBase.create()
   private val main = Handler(Looper.getMainLooper())
   private val factory: PeerConnectionFactory
-  private val peers = mutableMapOf<String, Peer>()
+  private val peers = ConcurrentHashMap<String, Peer>()
   var iceServers: List<IceServer> = emptyList()
 
   var localAudio: AudioTrack? = null
     private set
   var localVideo: VideoTrack? = null
     private set
+  private var audioSource: AudioSource? = null
   private var capturer: CameraVideoCapturer? = null
   private var videoSource: VideoSource? = null
   private var textureHelper: SurfaceTextureHelper? = null
@@ -78,7 +81,9 @@ class Mesh(
   /** Cria as trilhas locais conforme as permissões concedidas. */
   fun startLocal(audio: Boolean, video: Boolean) {
     if (audio && localAudio == null) {
-      localAudio = factory.createAudioTrack("audio0", factory.createAudioSource(MediaConstraints()))
+      val source = factory.createAudioSource(MediaConstraints())
+      audioSource = source
+      localAudio = factory.createAudioTrack("audio0", source)
       (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).apply {
         mode = AudioManager.MODE_IN_COMMUNICATION
         @Suppress("DEPRECATION")
@@ -98,6 +103,24 @@ class Mesh(
       textureHelper = helper
       localVideo = factory.createVideoTrack("video0", source)
     }
+  }
+
+  /** Desliga a câmera e o microfone locais (ex.: espectador fora da videoconferência). */
+  fun stopLocal() {
+    runCatching { capturer?.stopCapture() }
+    capturer?.dispose()
+    capturer = null
+    localVideo?.dispose()
+    localVideo = null
+    videoSource?.dispose()
+    videoSource = null
+    textureHelper?.dispose()
+    textureHelper = null
+    localAudio?.dispose()
+    localAudio = null
+    audioSource?.dispose()
+    audioSource = null
+    (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).mode = AudioManager.MODE_NORMAL
   }
 
   fun setEnabled(kind: String, enabled: Boolean) {
@@ -133,6 +156,9 @@ class Mesh(
 
         override fun onConnectionChange(state: PeerConnection.PeerConnectionState) {
           Log.d(TAG, "$peerId: $state")
+          if (state == PeerConnection.PeerConnectionState.FAILED) {
+            main.post { onRemoteVideo(peerId, null) }
+          }
         }
 
         override fun onSignalingChange(state: PeerConnection.SignalingState) {}
@@ -218,15 +244,9 @@ class Mesh(
 
   fun release() {
     closeAll()
-    runCatching { capturer?.stopCapture() }
-    capturer?.dispose()
-    videoSource?.dispose()
-    textureHelper?.dispose()
-    localVideo?.dispose()
-    localAudio?.dispose()
+    stopLocal()
     factory.dispose()
     egl.release()
-    (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).mode = AudioManager.MODE_NORMAL
   }
 
   private companion object {

@@ -72,7 +72,8 @@ class GameSocket(
   private fun lost(socket: WebSocket, code: Int, reason: String = "") {
     if (socket !== ws) return
     main.post { onStatus(false) }
-    // 4003: convidado tentando abrir uma mesa vazia; não adianta tentar de novo.
+    // 4000: mesma identidade conectou em outro lugar; 4003: convidado tentando abrir uma mesa vazia.
+    if (code == 4000) main.post { onRefused("Você entrou nesta sala em outro aparelho ou janela.") }
     if (code == 4003) main.post { onRefused(reason) }
     if (closed || code == 4000 || code == 4003) return
     val delay = minOf(10_000L, 500L shl minOf(retry++, 5))

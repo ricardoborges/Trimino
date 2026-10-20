@@ -6,8 +6,13 @@ package com.example.trimino.net
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonClassDiscriminator
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonTransformingSerializer
 
 val ProtocolJson = Json {
   classDiscriminator = "t"
@@ -78,6 +83,38 @@ data class Celebration(val seq: Int, val playerId: String, val points: Int, val 
 /** Depois de alguém bater: quem bateu e quem ainda vai jogar a última vez. */
 @Serializable data class FinalLap(val batedorId: String, val pending: List<String>)
 
+/** Uma jogada de robô no registro de tokens. */
+@Serializable
+data class TokenEntry(
+  val round: Int,
+  val bot: String,
+  val tile: List<Int>,
+  val points: Int,
+  val source: String,
+  val note: String? = null,
+  val prompt: Int = 0,
+  val completion: Int = 0,
+  val reasoning: Int = 0,
+  val total: Int = 0,
+  val ms: Int = 0,
+)
+
+@Serializable
+data class TokenTotals(
+  val calls: Int = 0,
+  val prompt: Int = 0,
+  val completion: Int = 0,
+  val reasoning: Int = 0,
+  val total: Int = 0,
+)
+
+@Serializable
+data class TokenLog(
+  val model: String,
+  val entries: List<TokenEntry> = emptyList(),
+  val totals: TokenTotals = TokenTotals(),
+)
+
 @Serializable
 data class You(
   val id: String,
@@ -111,10 +148,22 @@ data class GameState(
   val scoreSheet: List<SheetColumn> = emptyList(),
   val celebration: Celebration? = null,
   val finalLap: FinalLap? = null,
+  val tokens: TokenLog? = null,
   val you: You,
 )
 
-@Serializable data class IceServer(val urls: List<String>, val username: String? = null, val credential: String? = null)
+/** Aceita `urls: "stun:..."` ou `urls: ["stun:..."]`, como em `shared/src/protocol.ts`. */
+object StringListSerializer : JsonTransformingSerializer<List<String>>(ListSerializer(String.serializer())) {
+  override fun transformDeserialize(element: JsonElement): JsonElement =
+    if (element is JsonArray) element else JsonArray(listOf(element))
+}
+
+@Serializable
+data class IceServer(
+  @Serializable(with = StringListSerializer::class) val urls: List<String>,
+  val username: String? = null,
+  val credential: String? = null,
+)
 
 @Serializable
 @JsonClassDiscriminator("type")
@@ -154,7 +203,13 @@ sealed interface ClientMessage {
   /** `watch`: entra como espectador (só assiste; não ocupa lugar na mesa). */
   @Serializable
   @SerialName("join")
-  data class Join(val room: String, val name: String, val clientId: String, val watch: Boolean = false) : ClientMessage
+  data class Join(
+    val room: String,
+    val name: String,
+    val clientId: String,
+    val resume: String? = null,
+    val watch: Boolean = false,
+  ) : ClientMessage
 
   /** Espectador: ocupa um lugar livre (fora de partida). */
   @Serializable @SerialName("sit") data object Sit : ClientMessage

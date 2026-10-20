@@ -1,5 +1,6 @@
 package com.example.trimino.game
 
+import kotlin.math.hypot
 import kotlin.math.sqrt
 
 // Mesma grade de shared/src/geometry.ts: a célula (r, c) aponta para cima quando r + c é par,
@@ -17,6 +18,13 @@ object Geometry {
   fun cellCorners(r: Int, c: Int, edge: Float): List<Pair<Float, Float>> =
     cellVertices(r, c).map { (x, y) -> x * edge / 2f to y * edge * SQRT3_2 }
 
+  /** Centro (x, y) da célula em pixels. */
+  fun cellCenter(r: Int, c: Int, edge: Float): Pair<Float, Float> {
+    val cx = (c + 1f) * edge / 2f
+    val cy = (r + if (isUp(r, c)) 2f / 3f else 1f / 3f) * edge * SQRT3_2
+    return cx to cy
+  }
+
   /** Teste ponto-no-triângulo usado para detectar toques no tabuleiro. */
   fun cellAt(px: Float, py: Float, edge: Float): Pair<Int, Int> {
     val r = kotlin.math.floor(py / (edge * SQRT3_2)).toInt()
@@ -26,6 +34,24 @@ object Geometry {
       if (contains(pts, px, py)) return r to c
     }
     return r to approx
+  }
+
+  /**
+   * Em telas pequenas ou com o tabuleiro afastado, se o toque cair um pouco fora da célula livre,
+   * encontra a célula candidata mais próxima dentro de [maxDist] pixels.
+   */
+  fun closestCell(px: Float, py: Float, edge: Float, candidates: Iterable<Pair<Int, Int>>, maxDist: Float = edge * 0.65f): Pair<Int, Int>? {
+    var best: Pair<Int, Int>? = null
+    var bestDist = maxDist
+    for (cell in candidates) {
+      val (cx, cy) = cellCenter(cell.first, cell.second, edge)
+      val d = hypot(px - cx, py - cy)
+      if (d <= bestDist) {
+        bestDist = d
+        best = cell
+      }
+    }
+    return best
   }
 
   private fun contains(p: List<Pair<Float, Float>>, x: Float, y: Float): Boolean {

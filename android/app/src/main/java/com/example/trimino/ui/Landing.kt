@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -41,6 +42,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -185,9 +187,17 @@ private fun GoogleButton(enabled: Boolean, onClick: () -> Unit) {
 private fun LoginForm(site: SiteViewModel) {
   var email by rememberSaveable { mutableStateOf("") }
   var password by rememberSaveable { mutableStateOf("") }
-  SiteField(email, { email = it }, "E-mail", keyboard = KeyboardOptions(keyboardType = KeyboardType.Email))
-  SiteField(password, { password = it }, "Senha", password = true, keyboard = KeyboardOptions(keyboardType = KeyboardType.Password))
-  GoldButton("Entrar", { site.login(email, password) }, Modifier.fillMaxWidth(), enabled = !site.busy && email.isNotBlank() && password.isNotEmpty())
+  val canSubmit = !site.busy && email.isNotBlank() && password.isNotEmpty()
+  SiteField(email, { email = it }, "E-mail", keyboard = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next))
+  SiteField(
+    password,
+    { password = it },
+    "Senha",
+    password = true,
+    keyboard = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+    keyboardActions = KeyboardActions(onDone = { if (canSubmit) site.login(email, password) }),
+  )
+  GoldButton(if (site.busy) "Entrando…" else "Entrar", { site.login(email, password) }, Modifier.fillMaxWidth(), enabled = canSubmit)
 }
 
 @Composable
@@ -195,22 +205,36 @@ private fun SignupForm(site: SiteViewModel) {
   var name by rememberSaveable { mutableStateOf("") }
   var email by rememberSaveable { mutableStateOf("") }
   var password by rememberSaveable { mutableStateOf("") }
-  SiteField(name, { name = it.take(24) }, "Seu nome", keyboard = KeyboardOptions(capitalization = KeyboardCapitalization.Words))
-  SiteField(email, { email = it }, "E-mail", keyboard = KeyboardOptions(keyboardType = KeyboardType.Email))
-  SiteField(password, { password = it }, "Senha", password = true, keyboard = KeyboardOptions(keyboardType = KeyboardType.Password))
+  val canSubmit = !site.busy && name.isNotBlank() && email.isNotBlank() && password.length >= 8
+  SiteField(name, { name = it.take(24) }, "Seu nome", keyboard = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Next))
+  SiteField(email, { email = it }, "E-mail", keyboard = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next))
+  SiteField(
+    password,
+    { password = it },
+    "Senha",
+    password = true,
+    keyboard = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+    keyboardActions = KeyboardActions(onDone = { if (canSubmit) site.signup(name, email, password) }),
+  )
   MutedText("Pelo menos 8 caracteres. Com conta, suas partidas entram nas estatísticas e no ranking.", size = 13)
   GoldButton(
-    "Criar conta",
+    if (site.busy) "Criando conta…" else "Criar conta",
     { site.signup(name, email, password) },
     Modifier.fillMaxWidth(),
-    enabled = !site.busy && name.isNotBlank() && email.isNotBlank() && password.length >= 8,
+    enabled = canSubmit,
   )
 }
 
 @Composable
 private fun GuestForm(site: SiteViewModel) {
   var name by rememberSaveable { mutableStateOf(site.lastName) }
-  SiteField(name, { name = it.take(24) }, "Como quer ser chamado?", keyboard = KeyboardOptions(capitalization = KeyboardCapitalization.Words))
+  SiteField(
+    name,
+    { name = it.take(24) },
+    "Como quer ser chamado?",
+    keyboard = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
+    keyboardActions = KeyboardActions(onDone = { if (name.isNotBlank()) site.enterAsGuest(name) }),
+  )
   MutedText("Sem cadastro. Convidados entram nas mesas já abertas, mas não armam mesas, e as partidas não contam para o ranking.", size = 13)
   GoldButton("Entrar como convidado", { site.enterAsGuest(name) }, Modifier.fillMaxWidth(), enabled = name.isNotBlank())
 }

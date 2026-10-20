@@ -2,22 +2,31 @@ package com.example.trimino.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -32,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -90,18 +100,25 @@ fun VarandaScreen(site: SiteViewModel) {
     ) {
       site.notice?.let { msg ->
         item("notice") {
-          Text(
-            msg,
-            color = TextColor,
-            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Danger.copy(alpha = 0.18f))
-              .border(1.dp, Danger.copy(alpha = 0.5f), RoundedCornerShape(12.dp)).padding(12.dp),
-          )
+          Row(
+            modifier =
+              Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Danger.copy(alpha = 0.18f))
+                .border(1.dp, Danger.copy(alpha = 0.5f), RoundedCornerShape(12.dp)).clickable { site.notice = null }.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            Text(msg, color = TextColor, modifier = Modifier.weight(1f))
+            Icon(Icons.Rounded.Close, "Fechar aviso", tint = Muted, modifier = Modifier.size(18.dp))
+          }
         }
       }
       item("create") { if (guest) GuestCreateCard(site) else CreateCard(site) }
       item("code") { CodeCard(site) }
       item("media") {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { site.setMedia(!site.withMedia) }.padding(horizontal = 4.dp),
+        ) {
           Text("Entrar nas mesas com câmera e microfone", color = TextColor, fontSize = 14.sp, modifier = Modifier.weight(1f))
           Switch(
             site.withMedia,
@@ -111,7 +128,7 @@ fun VarandaScreen(site: SiteViewModel) {
         }
       }
       item("mesas-head") {
-        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 8.dp)) {
           Text("Mesas abertas", color = TextColor, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
           val mesas = site.mesas
           MutedText(
@@ -121,8 +138,11 @@ fun VarandaScreen(site: SiteViewModel) {
               mesas.size == 1 -> "1 mesa"
               else -> "${mesas.size} mesas"
             },
-            Modifier.padding(bottom = 4.dp),
           )
+          Spacer(Modifier.weight(1f))
+          IconButton(onClick = { site.refreshMesas(); site.refreshProfile() }, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.Rounded.Refresh, "Atualizar mesas", tint = Muted, modifier = Modifier.size(20.dp))
+          }
         }
       }
       val mesas = site.mesas.orEmpty()
@@ -154,11 +174,14 @@ private fun CreateCard(site: SiteViewModel) {
   SiteCard {
     CardTitle("Armar uma mesa")
     MutedText("A mesa ganha um código para você compartilhar com quem vai jogar.")
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+      verticalAlignment = Alignment.CenterVertically,
+      modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { private = !private },
+    ) {
       Checkbox(private, { private = it }, colors = CheckboxDefaults.colors(checkedColor = Accent, checkmarkColor = AccentInk, uncheckedColor = Muted))
       Text("Mesa privada (só entra quem tiver o link)", color = TextColor, fontSize = 14.sp)
     }
-    GoldButton("Criar mesa", { site.createMesa(private) }, Modifier.fillMaxWidth(), enabled = !site.busy)
+    GoldButton(if (site.busy) "Criando mesa…" else "Criar mesa", { site.createMesa(private) }, Modifier.fillMaxWidth(), enabled = !site.busy)
   }
 }
 
@@ -178,9 +201,10 @@ private fun CodeCard(site: SiteViewModel) {
     CardTitle("Tenho um código")
     SiteField(
       code,
-      { code = it.uppercase().filter { c -> c.isLetterOrDigit() }.take(12) },
-      "Código da mesa",
-      keyboard = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
+      { code = parseRoomCode(it) },
+      "Código ou link da mesa",
+      keyboard = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Go),
+      keyboardActions = KeyboardActions(onGo = { if (code.isNotEmpty()) site.openCode(code, watch = false) }),
     )
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
       GoldButton("Entrar", { site.openCode(code, watch = false) }, Modifier.weight(1f), enabled = code.isNotEmpty())
@@ -266,14 +290,35 @@ private fun StatsCard(site: SiteViewModel) {
 
 @Composable
 private fun RankingCard(site: SiteViewModel) {
+  val fmt = NumberFormat.getIntegerInstance(Locale.forLanguageTag("pt-BR"))
   SiteCard {
     CardTitle("Ranking")
     site.ranking.take(10).forEachIndexed { i, r ->
-      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("${i + 1}", color = if (i < 3) Accent else Muted, fontWeight = FontWeight.Bold, modifier = Modifier.widthIn(min = 20.dp))
-        Text(r.name, color = TextColor, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+      val me = site.user?.id == r.userId
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier =
+          if (me) Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Accent.copy(alpha = 0.12f)).padding(horizontal = 8.dp, vertical = 4.dp)
+          else Modifier.fillMaxWidth().padding(vertical = 2.dp),
+      ) {
+        val rankLabel = when (i) {
+          0 -> "🥇"
+          1 -> "🥈"
+          2 -> "🥉"
+          else -> "${i + 1}"
+        }
+        Text(rankLabel, color = if (i < 3) Accent else Muted, fontWeight = FontWeight.Bold, modifier = Modifier.widthIn(min = 24.dp))
+        Text(
+          r.name + if (me) " (você)" else "",
+          color = if (me) Accent else TextColor,
+          fontWeight = if (me) FontWeight.Bold else FontWeight.Normal,
+          modifier = Modifier.weight(1f),
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
         MutedText(
-          "${r.wins} ${if (r.wins == 1) "vitória" else "vitórias"} · ${r.matches} ${if (r.matches == 1) "partida" else "partidas"}",
+          "${r.wins} ${if (r.wins == 1) "vitória" else "vitórias"} · ${r.matches} ${if (r.matches == 1) "partida" else "partidas"} · ${fmt.format(r.totalPoints)} pts",
           size = 12,
         )
       }

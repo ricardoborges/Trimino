@@ -205,6 +205,7 @@ fun rotateAround(pts: List<Offset>, deg: Float): List<Offset> {
 // ---------------- feltro ----------------
 
 private var feltCache: ImageBitmap? = null
+private var feltBrushCache: ShaderBrush? = null
 
 /** Textura do feltro: ruído fino e fibras curtas, gerada uma vez (mesma receita da Web). */
 private fun feltTexture(): ImageBitmap {
@@ -231,10 +232,13 @@ private fun feltTexture(): ImageBitmap {
   return bmp.also { feltCache = it }
 }
 
+private fun feltBrush(): ShaderBrush =
+  feltBrushCache ?: ShaderBrush(ImageShader(feltTexture(), TileMode.Repeated, TileMode.Repeated)).also { feltBrushCache = it }
+
 /** Mesa de feltro com a luz mais forte no meio. */
 fun DrawScope.drawFelt() {
   drawRect(TableFelt)
-  drawRect(ShaderBrush(ImageShader(feltTexture(), TileMode.Repeated, TileMode.Repeated)))
+  drawRect(feltBrush())
   drawRect(
     Brush.radialGradient(
       0f to Color.White.copy(alpha = 0.09f),

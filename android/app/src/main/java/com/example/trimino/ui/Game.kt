@@ -46,17 +46,21 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ListAlt
+import androidx.compose.material.icons.automirrored.rounded.RotateRight
 import androidx.compose.material.icons.rounded.Cameraswitch
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.FilterCenterFocus
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Link
-import androidx.compose.material.icons.automirrored.rounded.ListAlt
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MicOff
 import androidx.compose.material.icons.rounded.RestartAlt
-import androidx.compose.material.icons.automirrored.rounded.RotateRight
+import androidx.compose.material.icons.rounded.SwapVert
+import androidx.compose.material.icons.rounded.Token
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.VideocamOff
 import androidx.compose.material.icons.rounded.Visibility
@@ -92,14 +96,19 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -110,6 +119,8 @@ import com.example.trimino.net.GameState
 import com.example.trimino.net.Intent
 import com.example.trimino.net.LogEntry
 import com.example.trimino.net.PlayerInfo
+import java.text.NumberFormat
+import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.max
@@ -144,30 +155,63 @@ private fun signed(n: Int) = if (n < 0) "−${-n}" else "+$n"
 @Composable
 fun GameScreen(vm: GameViewModel) {
   val s = vm.state
+  val haptic = LocalHapticFeedback.current
   var confirmQuit by remember { mutableStateOf(false) }
+  var confirmRestart by remember { mutableStateOf<String?>(null) }
   var panel by remember { mutableStateOf<String?>(null) }
   BackHandler { confirmQuit = true }
+
+  LaunchedEffect(vm.myTurnSeq) {
+    if (vm.myTurnSeq > 0) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+  }
 
   BoxWithConstraints(Modifier.fillMaxSize().background(FeltDeep).safeDrawingPadding()) {
     val landscape = maxWidth > maxHeight
     Column(Modifier.fillMaxSize()) {
-      TopBar(vm, s, onQuit = { confirmQuit = true }, onPanel = { panel = it })
+      TopBar(vm, s, onQuit = { confirmQuit = true }, onPanel = { panel = it }, onRestart = { confirmRestart = it })
       if (landscape) {
         Row(Modifier.weight(1f)) {
-          Table(vm, s, Modifier.weight(1f).fillMaxHeight())
-          Side(vm, s, columns = 2, modifier = Modifier.width(300.dp).fillMaxHeight())
+          Column(Modifier.weight(1f).fillMaxHeight()) {
+            Table(vm, s, Modifier.weight(1f).fillMaxWidth())
+            Dock(vm, s)
+          }
+          Side(vm, s, columns = 2, landscape = true, modifier = Modifier.width(280.dp).fillMaxHeight())
         }
       } else {
         Table(vm, s, Modifier.weight(1f).fillMaxWidth())
-        Side(vm, s, columns = 4, modifier = Modifier.fillMaxWidth())
+        Side(vm, s, columns = 4, landscape = false, modifier = Modifier.fillMaxWidth())
+        Dock(vm, s)
       }
-      Dock(vm, s)
     }
   }
 
   if (s != null && vm.pile != null) PileDialog(vm, s)
   if (s != null && panel == "log") LogSheet(vm, s) { panel = null }
   if (s != null && panel == "sheet") ScoreSheet(s) { panel = null }
+  if (s != null && panel == "tokens" && s.tokens != null) TokensSheet(s) { panel = null }
+  if (s != null && panel == "watchers") SpectatorsSheet(vm, s) { panel = null }
+  confirmRestart?.let { kind ->
+    val round = kind == "round"
+    AlertDialog(
+      onDismissRequest = { confirmRestart = null },
+      containerColor = Panel,
+      title = { Text(if (round) "Reiniciar a rodada?" else "Reiniciar a partida?", color = TextColor) },
+      text = {
+        Text(
+          if (round) "As peças são distribuídas de novo e os pontos desta rodada são desfeitos."
+          else "O placar volta a zero e começa um novo sorteio.",
+          color = Muted,
+        )
+      },
+      confirmButton = {
+        TextButton({
+          confirmRestart = null
+          if (round) vm.restartRound() else vm.restartGame()
+        }) { Text("Reiniciar", color = Color(0xFFFFB3AA)) }
+      },
+      dismissButton = { TextButton({ confirmRestart = null }) { Text("Cancelar", color = TextColor) } },
+    )
+  }
   if (confirmQuit) {
     AlertDialog(
       onDismissRequest = { confirmQuit = false },
@@ -183,17 +227,21 @@ fun GameScreen(vm: GameViewModel) {
 // ---------------- topo ----------------
 
 @Composable
-private fun IconChip(icon: ImageVector, description: String, active: Boolean = false, onClick: () -> Unit) {
-  Box(
-    Modifier.size(34.dp).clip(CircleShape).background(Color(0x40000000)).border(1.dp, if (active) Accent else FeltLine, CircleShape).clickable(onClick = onClick),
-    contentAlignment = Alignment.Center,
+private fun IconChip(icon: ImageVector, description: String, active: Boolean = false, badge: String? = null, onClick: () -> Unit) {
+  Row(
+    Modifier.height(34.dp).widthIn(min = 34.dp).clip(CircleShape).background(Color(0x40000000))
+      .border(1.dp, if (active) Accent else FeltLine, CircleShape).clickable(onClick = onClick)
+      .padding(horizontal = if (badge != null) 9.dp else 0.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
   ) {
     Icon(icon, description, tint = if (active) Accent else TextColor, modifier = Modifier.size(18.dp))
+    if (badge != null) Text(badge, color = if (active) Accent else TextColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
   }
 }
 
 @Composable
-private fun TopBar(vm: GameViewModel, s: GameState?, onQuit: () -> Unit, onPanel: (String) -> Unit) {
+private fun TopBar(vm: GameViewModel, s: GameState?, onQuit: () -> Unit, onPanel: (String) -> Unit, onRestart: (String) -> Unit) {
   Row(
     Modifier.fillMaxWidth().background(Panel).padding(horizontal = 10.dp, vertical = 8.dp),
     verticalAlignment = Alignment.CenterVertically,
@@ -201,6 +249,14 @@ private fun TopBar(vm: GameViewModel, s: GameState?, onQuit: () -> Unit, onPanel
   ) {
     IconChip(Icons.Rounded.History, "Histórico da partida") { onPanel("log") }
     IconChip(Icons.AutoMirrored.Rounded.ListAlt, "Folha de pontos") { onPanel("sheet") }
+    if (s?.tokens != null) {
+      IconChip(Icons.Rounded.Token, "Tokens da IA") { onPanel("tokens") }
+    }
+    val watchers = s?.players?.filter { it.spectator && it.connected }.orEmpty()
+    if (watchers.isNotEmpty()) {
+      val hasRequest = vm.isHost && watchers.any { it.callRequested }
+      IconChip(Icons.Rounded.Visibility, "Espectadores", active = hasRequest, badge = "${watchers.size}") { onPanel("watchers") }
+    }
     if (!vm.online) Text("reconectando…", color = Danger, fontSize = 13.sp)
     Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End)) {
       if (s != null) Scores(vm, s)
@@ -211,8 +267,8 @@ private fun TopBar(vm: GameViewModel, s: GameState?, onQuit: () -> Unit, onPanel
         IconChip(Icons.Rounded.RestartAlt, "Reiniciar", active = open) { open = true }
         DropdownMenu(open, { open = false }, containerColor = Panel, shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, FeltLine)) {
           Column(Modifier.padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            DarkButton("Reiniciar rodada", { open = false; vm.restartRound() }, enabled = s.phase == "playing")
-            DarkButton("Reiniciar partida", { open = false; vm.restartGame() })
+            DarkButton("Reiniciar rodada", { open = false; onRestart("round") }, enabled = s.phase == "playing")
+            DarkButton("Reiniciar partida", { open = false; onRestart("game") })
           }
         }
       }
@@ -434,6 +490,7 @@ private val ConfettiColors = ValueColors.drop(1) + listOf(Accent, Color.White, C
 /** Dois lançadores de confete nos cantos de baixo da mesa disparam para o centro; o letreiro mostra os pontos. */
 @Composable
 private fun Confetti(cel: CelebrationView) {
+  val density = LocalDensity.current.density
   val pieces = remember(cel.seq) { mutableListOf<Piece>() }
   var frame by remember(cel.seq) { mutableLongStateOf(0L) }
   var size by remember { mutableStateOf(Size.Zero) }
@@ -457,7 +514,7 @@ private fun Confetti(cel: CelebrationView) {
           pieces.add(
             Piece(
               if (side == 0) w * 0.06f else w * 0.94f, h * 0.96f, cos(ang) * speed, sin(ang) * speed, rnd.nextFloat() * 360f,
-              (rnd.nextFloat() - 0.5f) * 720f, 6f + rnd.nextFloat() * 6f, 4f + rnd.nextFloat() * 5f,
+              (rnd.nextFloat() - 0.5f) * 720f, (6f + rnd.nextFloat() * 6f) * density, (4f + rnd.nextFloat() * 5f) * density,
               ConfettiColors[rnd.nextInt(ConfettiColors.size)], rnd.nextFloat() < 0.25f,
             )
           )
@@ -879,20 +936,26 @@ private fun PileDialog(vm: GameViewModel, s: GameState) {
 // ---------------- câmeras e ferramentas ----------------
 
 @Composable
-private fun Side(vm: GameViewModel, s: GameState?, columns: Int, modifier: Modifier) {
+private fun Side(vm: GameViewModel, s: GameState?, columns: Int, landscape: Boolean, modifier: Modifier) {
   val mesh = vm.mesh ?: return
   val context = LocalContext.current
+  var showCameras by remember { mutableStateOf(true) }
+  val scrollMod = if (landscape) Modifier.verticalScroll(rememberScrollState()) else Modifier
   Column(
-    modifier.background(Panel).border(BorderStroke(1.dp, FeltLine.copy(alpha = 0.6f))).padding(10.dp),
+    modifier.background(Panel).border(BorderStroke(1.dp, FeltLine.copy(alpha = 0.6f))).then(scrollMod).padding(10.dp),
     verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
-    if (vm.inCall) {
+    if (vm.inCall && showCameras) {
       val entries = buildList {
         add(Triple(vm.myId, mesh.localVideo, true))
         vm.remoteVideos.forEach { (id, track) -> add(Triple(id, track, false)) }
       }
-      entries.chunked(columns).forEach { row ->
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+      val rowCols = if (landscape) columns else entries.size.coerceIn(1, columns)
+      entries.chunked(rowCols).forEach { row ->
+        Row(
+          horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+          modifier = Modifier.fillMaxWidth().then(if (!landscape) Modifier.heightIn(max = 112.dp) else Modifier),
+        ) {
           row.forEach { (id, track, self) ->
             val p = s?.players?.firstOrNull { it.id == id }
             val seat = s?.players?.filter { !it.spectator }?.indexOfFirst { it.id == id } ?: -1
@@ -928,7 +991,7 @@ private fun Side(vm: GameViewModel, s: GameState?, columns: Int, modifier: Modif
               )
             }
           }
-          repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+          if (landscape) repeat(rowCols - row.size) { Spacer(Modifier.weight(1f)) }
         }
       }
     }
@@ -937,6 +1000,9 @@ private fun Side(vm: GameViewModel, s: GameState?, columns: Int, modifier: Modif
         ToolButton(if (vm.audioOn) Icons.Rounded.Mic else Icons.Rounded.MicOff, "Microfone", off = !vm.audioOn, enabled = mesh.localAudio != null, onClick = vm::toggleAudio, modifier = Modifier.weight(1f))
         ToolButton(if (vm.videoOn) Icons.Rounded.Videocam else Icons.Rounded.VideocamOff, "Câmera", off = !vm.videoOn, enabled = mesh.localVideo != null, onClick = vm::toggleVideo, modifier = Modifier.weight(1f))
         ToolButton(Icons.Rounded.Cameraswitch, "Virar", enabled = mesh.localVideo != null && vm.videoOn, onClick = vm::switchCamera, modifier = Modifier.weight(1f))
+        if (!landscape) {
+          ToolButton(if (showCameras) Icons.Rounded.ExpandMore else Icons.Rounded.ExpandLess, if (showCameras) "Ocultar vídeos" else "Mostrar vídeos", onClick = { showCameras = !showCameras })
+        }
       }
       if (!vm.isSpectator) ToolButton(WhatsappIcon, "Convidar", iconTint = Whatsapp, onClick = { openWhatsapp(context, vm) }, modifier = Modifier.weight(1f))
       if (vm.isSpectator) {
@@ -959,7 +1025,7 @@ private fun Side(vm: GameViewModel, s: GameState?, columns: Int, modifier: Modif
         Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Panel2).border(1.dp, Accent, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
       ) {
-        Text("✋ ${p.name} quer entrar na conversa", color = TextColor, fontSize = 13.sp, modifier = Modifier.weight(1f))
+        Text("✋ ${p.name}${if (p.guest) " (convidado)" else ""} quer entrar na conversa", color = TextColor, fontSize = 13.sp, modifier = Modifier.weight(1f))
         TextButton({ vm.answerCall(p.id, allow = true) }) { Text("Permitir", color = Accent) }
         TextButton({ vm.answerCall(p.id, allow = false) }) { Text("Recusar", color = Muted) }
       }
@@ -999,23 +1065,53 @@ private fun ToolButton(
 @Composable
 private fun Dock(vm: GameViewModel, s: GameState?) {
   // sem pedras na mão (espera, sorteio): a barra não aparece
-  if (s == null || vm.isSpectator || s.you.hand.isEmpty()) return
+  val hand = vm.orderedHand
+  if (s == null || vm.isSpectator || hand.isEmpty()) return
   val myTurn = vm.isMyTurn
+  val haptic = LocalHapticFeedback.current
+  val shake = remember { Animatable(0f) }
+  LaunchedEffect(vm.errorSeq) {
+    if (vm.errorSeq > 0) {
+      haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+      for (dx in listOf(-10f, 10f, -8f, 8f, -4f, 0f)) {
+        shake.animateTo(dx, tween(45))
+      }
+    }
+  }
   Column(
-    Modifier.fillMaxWidth().background(if (myTurn) DockMine else Panel).border(BorderStroke(1.dp, if (myTurn) DockMineLine else FeltLine)).padding(horizontal = 12.dp, vertical = 8.dp),
+    Modifier.fillMaxWidth().offset(x = shake.value.dp).background(if (myTurn) DockMine else Panel)
+      .border(BorderStroke(1.dp, if (myTurn) DockMineLine else FeltLine)).padding(horizontal = 12.dp, vertical = 8.dp),
     verticalArrangement = Arrangement.spacedBy(6.dp),
   ) {
     val listState = rememberLazyListState()
-    LazyRow(state = listState, horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp)) {
-      items(s.you.hand, key = { it.id }) { t ->
-        val selected = t.id == vm.selectedTile
-        val lift by animateDpAsState(if (selected) (-4).dp else 0.dp, label = "lift")
-        Box(
-          Modifier.offset(y = lift).width(HAND_TILE + 8.dp).clip(RoundedCornerShape(12.dp)).background(if (selected) Accent.copy(alpha = 0.12f) else Color.Transparent)
-            .border(2.dp, if (selected) Accent else Color.Transparent, RoundedCornerShape(12.dp)).clickable { vm.selectTile(t.id) }.padding(4.dp),
-          contentAlignment = Alignment.Center,
-        ) {
-          PipTile(t.v, HAND_TILE)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+      LazyRow(
+        state = listState,
+        modifier = Modifier.weight(1f),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp),
+      ) {
+        items(hand, key = { it.id }) { t ->
+          val selected = t.id == vm.selectedTile
+          val lift by animateDpAsState(if (selected) (-4).dp else 0.dp, label = "lift")
+          Box(
+            Modifier.offset(y = lift).width(HAND_TILE + 8.dp).clip(RoundedCornerShape(12.dp)).background(if (selected) Accent.copy(alpha = 0.12f) else Color.Transparent)
+              .border(2.dp, if (selected) Accent else Color.Transparent, RoundedCornerShape(12.dp))
+              .clickable {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                vm.selectTile(t.id)
+              }
+              .padding(4.dp),
+            contentAlignment = Alignment.Center,
+          ) {
+            PipTile(t.v, HAND_TILE)
+          }
+        }
+      }
+      if (hand.size >= 2) {
+        IconChip(Icons.Rounded.SwapVert, "Ordenar pedras da mão") {
+          haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+          vm.sortHand()
         }
       }
     }
@@ -1028,13 +1124,22 @@ private fun Dock(vm: GameViewModel, s: GameState?) {
     }
     if (actions.isNotEmpty()) {
       val solo = actions.size == 1
+      val drawsLeft = s.you.drawsLeft ?: 1
       Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         for (a in actions) {
           val m = Modifier.weight(1f)
           when (a) {
-            "rotate" -> ActionButton("Girar", m, icon = Icons.AutoMirrored.Rounded.RotateRight, solo = solo, onClick = vm::rotate)
-            "play" -> ActionButton("Jogar", m, primary = true, solo = solo, onClick = vm::play)
-            "draw" -> ActionButton("Comprar", m, solo = solo, onClick = vm::openPile)
+            "rotate" ->
+              ActionButton("Girar", m, icon = Icons.AutoMirrored.Rounded.RotateRight, solo = solo) {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                vm.rotate()
+              }
+            "play" ->
+              ActionButton("Jogar", m, primary = true, solo = solo) {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                vm.play()
+              }
+            "draw" -> ActionButton(if (drawsLeft > 1) "Comprar ($drawsLeft)" else "Comprar", m, solo = solo, onClick = vm::openPile)
             "pass" -> ActionButton("Passar", m, solo = solo) { vm.pass() }
           }
         }
@@ -1055,11 +1160,18 @@ private fun ActionButton(text: String, modifier: Modifier, icon: ImageVector? = 
     horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
   ) {
     icon?.let { Icon(it, null, tint = if (gold) AccentInk else TextColor, modifier = Modifier.size(18.dp)) }
-    Text(text, color = if (gold) AccentInk else TextColor, fontWeight = FontWeight.SemiBold, fontSize = if (solo) 17.sp else 15.sp)
+    Text(
+      text,
+      color = if (gold) AccentInk else TextColor,
+      fontWeight = FontWeight.SemiBold,
+      fontSize = if (solo) 17.sp else 14.sp,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+    )
   }
 }
 
-// ---------------- histórico e folha de pontos ----------------
+// ---------------- histórico, folha de pontos, tokens e espectadores ----------------
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1068,7 +1180,7 @@ private fun LogSheet(vm: GameViewModel, s: GameState, onClose: () -> Unit) {
     Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
       Text("Histórico da partida", color = TextColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
       val list = rememberLazyListState()
-      LaunchedEffect(Unit) { if (vm.log.isNotEmpty()) list.scrollToItem(vm.log.size - 1) }
+      LaunchedEffect(vm.log.size) { if (vm.log.isNotEmpty()) list.scrollToItem(vm.log.size - 1) }
       LazyColumn(state = list, modifier = Modifier.heightIn(max = 480.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         itemsIndexed(vm.log) { _, e -> LogLine(e) }
         if (vm.log.isEmpty()) item { MutedText("Nada ainda.") }
@@ -1077,17 +1189,27 @@ private fun LogSheet(vm: GameViewModel, s: GameState, onClose: () -> Unit) {
   }
 }
 
+private val LogPipColors = listOf(Color(0xFF3A3A3A), Color(0xFFD96518), Color(0xFF1A843E), Color(0xFF1A5EA8), Color(0xFFB58900), Color(0xFFC82822))
+
 @Composable
 private fun LogLine(e: LogEntry) {
   FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(2.dp), itemVerticalAlignment = Alignment.CenterVertically) {
-    Text("${e.actor ?: ""} ${e.action}${if (e.tile != null) ":" else ""}".trim(), color = TextColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-    e.tile?.let {
+    if (e.actor != null) {
+      Text("${e.actor} ${e.action}${if (e.tile != null) ":" else ""}", color = TextColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+    } else {
+      Text(e.action, color = Muted, fontSize = 13.sp)
+    }
+    e.tile?.let { vals ->
       Text(
-        it.joinToString("-"),
-        color = Color(0xFF6B5D43),
+        buildAnnotatedString {
+          vals.forEachIndexed { i, n ->
+            if (i > 0) withStyle(SpanStyle(color = Color(0xFF6B5D43))) { append("-") }
+            withStyle(SpanStyle(color = LogPipColors.getOrElse(n) { Color(0xFF3A3A3A) })) { append("$n") }
+          }
+        },
         fontSize = 13.sp,
         fontWeight = FontWeight.ExtraBold,
-        modifier = Modifier.background(Color(0xFFF3EAD6), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp),
+        modifier = Modifier.background(Color(0xFFF3EAD6), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
       )
     }
     e.points?.let { Text(if (it < 0) "−${-it}" else "+$it", color = if (it > 0) PointsPos else if (it < 0) PointsNeg else Muted, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
@@ -1095,7 +1217,7 @@ private fun LogLine(e: LogEntry) {
   }
 }
 
-/** Folha de pontos, como a anotada no papel: uma coluna por jogador, um total a cada vez que ele pontua. */
+/** Folha de pontos, como a anotada no papel: rodadas alinhadas entre as colunas e bônus de vitória em destaque. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ScoreSheet(s: GameState, onClose: () -> Unit) {
@@ -1103,31 +1225,156 @@ private fun ScoreSheet(s: GameState, onClose: () -> Unit) {
     Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
       Text("Folha de pontos", color = TextColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
       val cols = s.scoreSheet.filter { c -> s.players.any { it.id == c.playerId && !it.spectator } }
-      Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0xFFF6EFDC)).padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        for (col in cols) {
-          val p = s.players.firstOrNull { it.id == col.playerId }
-          Column(Modifier.weight(1f).heightIn(max = 460.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(p?.name ?: "?", color = Color(0xFF1B2A24), fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Box(Modifier.fillMaxWidth().height(2.dp).background(colorOf(s, col.playerId)))
-            var round = 0
-            col.marks.forEachIndexed { i, m ->
-              if (m.round != round) {
-                round = m.round
-                Text("Rodada ${m.round}", color = Color(0xFF8A7B5C), fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+      val maxRound = cols.flatMap { it.marks }.maxOfOrNull { it.round } ?: 0
+      if (maxRound == 0) {
+        MutedText("Os totais de cada jogador vão sendo anotados aqui a cada jogada.")
+      } else {
+        Column(
+          Modifier.fillMaxWidth().heightIn(max = 460.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFFF6EFDC))
+            .verticalScroll(rememberScrollState()).padding(10.dp),
+          verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (col in cols) {
+              val p = s.players.firstOrNull { it.id == col.playerId }
+              Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                  p?.name ?: "?",
+                  color = Color(0xFF1B2A24),
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 14.sp,
+                  maxLines = 1,
+                  overflow = TextOverflow.Ellipsis,
+                  textDecoration = if (p?.out == true) TextDecoration.LineThrough else null,
+                )
+                Box(Modifier.fillMaxWidth().height(2.dp).background(colorOf(s, col.playerId)))
               }
-              val last = i == col.marks.lastIndex
-              Text(
-                "${m.total}",
-                color = if (m.roundWin) Color(0xFFB07A10) else Color(0xFF1B2A24),
-                fontSize = 15.sp,
-                fontWeight = if (last || m.roundWin) FontWeight.ExtraBold else FontWeight.Normal,
-                textDecoration = if (last) null else TextDecoration.LineThrough,
-              )
+            }
+          }
+          for (r in 1..maxRound) {
+            Text("Rodada $r", color = Color(0xFF8A7B5C), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              for (col in cols) {
+                val roundMarks = col.marks.withIndex().filter { it.value.round == r }
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                  for ((idx, m) in roundMarks) {
+                    val last = idx == col.marks.lastIndex
+                    Text(
+                      "${m.total}",
+                      color = if (m.roundWin) Color(0xFF8C5800) else Color(0xFF1B2A24),
+                      fontSize = 15.sp,
+                      fontWeight = if (last || m.roundWin) FontWeight.ExtraBold else FontWeight.Normal,
+                      textDecoration = if (last) null else TextDecoration.LineThrough,
+                      modifier =
+                        if (m.roundWin) Modifier.border(1.5.dp, Color(0xFFD4941C), CircleShape).padding(horizontal = 7.dp, vertical = 1.dp)
+                        else Modifier,
+                    )
+                  }
+                }
+              }
             }
           }
         }
       }
       MutedText("Meta: ${s.targetScore} pontos.", size = 13)
+    }
+  }
+}
+
+/** Registro de tokens gastos pelos jogadores IA na partida, igual ao painel Tokens da Web. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TokensSheet(s: GameState, onClose: () -> Unit) {
+  val log = s.tokens ?: return
+  val fmt = NumberFormat.getIntegerInstance(Locale.forLanguageTag("pt-BR"))
+  ModalBottomSheet(onClose, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Panel) {
+    Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+      Text("Tokens dos jogadores IA", color = TextColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+      val t = log.totals
+      Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(FeltDeep).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+          "${fmt.format(t.total)} tokens em ${t.calls} ${if (t.calls == 1) "chamada" else "chamadas"}",
+          color = Accent,
+          fontSize = 15.sp,
+          fontWeight = FontWeight.Bold,
+        )
+        MutedText(
+          "Entrada ${fmt.format(t.prompt)} · saída ${fmt.format(t.completion)}${if (t.reasoning > 0) " (raciocínio ${fmt.format(t.reasoning)})" else ""} · Modelo: ${log.model}",
+          size = 12,
+        )
+      }
+      val list = rememberLazyListState()
+      LaunchedEffect(log.entries.size) { if (log.entries.isNotEmpty()) list.scrollToItem(log.entries.size - 1) }
+      LazyColumn(state = list, modifier = Modifier.heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        itemsIndexed(log.entries) { _, e ->
+          Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Panel2).padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+              MutedText("R${e.round}", size = 12)
+              Text(e.bot, color = TextColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+              Text(
+                e.tile.joinToString("-"),
+                color = Color(0xFF6B5D43),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.ExtraBold,
+                modifier = Modifier.background(Color(0xFFF3EAD6), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp),
+              )
+              Text(signed(e.points), color = if (e.points < 0) PointsNeg else PointsPos, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+              Spacer(Modifier.weight(1f))
+              Text(if (e.total > 0) "${fmt.format(e.total)} tokens" else "0 tokens", color = Muted, fontSize = 12.sp)
+            }
+            val details = buildList {
+              add(if (e.source == "ia") "IA escolheu" else "melhor pontuação")
+              e.note?.takeIf { it.isNotBlank() }?.let(::add)
+              if (e.total > 0) add("entrada ${fmt.format(e.prompt)} · saída ${fmt.format(e.completion)}${if (e.reasoning > 0) " (rac. ${fmt.format(e.reasoning)})" else ""}")
+              if (e.ms > 0) add(String.format(Locale.forLanguageTag("pt-BR"), "%.1f s", e.ms / 1000.0))
+            }
+            MutedText(details.joinToString(" · "), size = 12)
+          }
+        }
+        if (log.entries.isEmpty()) item { MutedText("Nenhuma jogada de IA ainda.") }
+      }
+    }
+  }
+}
+
+/** Lista de espectadores assistindo à mesa e controle de participação na conversa pelo anfitrião. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SpectatorsSheet(vm: GameViewModel, s: GameState, onClose: () -> Unit) {
+  val watchers = s.players.filter { it.spectator && it.connected }
+  ModalBottomSheet(onClose, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Panel) {
+    Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+      Text("Assistindo à mesa (${watchers.size})", color = TextColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+      if (watchers.isEmpty()) {
+        MutedText("Ninguém assistindo no momento.")
+      } else {
+        for (p in watchers) {
+          Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Panel2).padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            Initial(p.name, color = Felt, size = 28.dp)
+            Column(Modifier.weight(1f)) {
+              Text(p.name + if (p.id == s.you.id) " (você)" else "", color = TextColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+              MutedText(
+                when {
+                  p.inCall -> "Na conversa de vídeo"
+                  p.callRequested -> "Pediu para entrar na conversa"
+                  else -> "Só assistindo"
+                },
+                size = 12,
+              )
+            }
+            if (vm.isHost && p.callRequested) {
+              TextButton({ vm.answerCall(p.id, allow = true) }) { Text("Permitir", color = Accent) }
+              TextButton({ vm.answerCall(p.id, allow = false) }) { Text("Recusar", color = Muted) }
+            } else if (vm.isHost && p.inCall) {
+              TextButton({ vm.endCall(p.id) }) { Text("Tirar da conversa", color = Color(0xFFFFB3AA)) }
+            }
+          }
+        }
+      }
     }
   }
 }

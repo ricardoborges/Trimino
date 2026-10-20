@@ -6,9 +6,11 @@ import com.example.trimino.net.Intent
 import com.example.trimino.net.ProtocolJson
 import com.example.trimino.net.ServerMessage
 import com.example.trimino.net.SignalData
+import com.example.trimino.ui.parseRoomCode
 import com.example.trimino.ui.rotated
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -32,9 +34,10 @@ class ProtocolTest {
     )
     assertEquals(ServerMessage.Signal("x", SignalData.Ice("c", "0", 0)), msg)
     val welcome = ProtocolJson.decodeFromString<ServerMessage>(
-      """{"t":"welcome","you":"a","room":"R","iceServers":[{"urls":["stun:x"]}],"peers":["b"]}"""
-    )
-    assertTrue(welcome is ServerMessage.Welcome)
+      """{"t":"welcome","you":"a","room":"R","iceServers":[{"urls":["stun:x"]},{"urls":"stun:y"}],"peers":["b"]}"""
+    ) as ServerMessage.Welcome
+    assertEquals(listOf("stun:x"), welcome.iceServers[0].urls)
+    assertEquals(listOf("stun:y"), welcome.iceServers[1].urls)
   }
 
   /** Fixtures gerados pelo servidor real com `node scripts/capture-fixtures.mjs`. */
@@ -68,5 +71,20 @@ class ProtocolTest {
       val cy = pts.sumOf { it.second.toDouble() }.toFloat() / 3
       assertEquals(r to c, Geometry.cellAt(cx, cy, 64f))
     }
+  }
+
+  @Test
+  fun closestCellSnapsNearbyTapToFrontier() {
+    val frontier = listOf(0 to 1, 0 to -1, 1 to 0)
+    val (cx, cy) = Geometry.cellCenter(0, 1, 64f)
+    assertEquals(0 to 1, Geometry.closestCell(cx + 12f, cy - 10f, 64f, frontier))
+    assertNull(Geometry.closestCell(cx + 200f, cy + 200f, 64f, frontier))
+  }
+
+  @Test
+  fun parseRoomCodeExtractsFromLinksAndMessages() {
+    assertEquals("ABC23", parseRoomCode("abc23"))
+    assertEquals("K9M4P", parseRoomCode("https://trimino.exemplo.com/mesa/k9m4p?assistir=1"))
+    assertEquals("Z7X8C", parseRoomCode("Bora jogar Triminó? Entra na minha mesa: https://trimino.exemplo.com/mesa/Z7X8C"))
   }
 }

@@ -40,24 +40,38 @@ class BoardCamera {
   var offset by mutableStateOf(Offset.Zero)
   var scale by mutableStateOf(1f)
   var size by mutableStateOf(IntSize.Zero)
+  var userMoved by mutableStateOf(false)
 
   /** Enquadra as peças (ou a origem, com o tabuleiro vazio), como o `fit` da Web. */
   fun fit(cells: List<Pair<Int, Int>>, density: Float) {
-    if (size.width == 0) return
+    if (size.width == 0 || size.height == 0) return
     val pts = cells.ifEmpty { listOf(0 to 0) }.flatMap { (r, c) -> Geometry.cellCorners(r, c, EDGE) }
-    val pad = EDGE * 0.6f
+    val pad = EDGE * 0.75f
     val minX = pts.minOf { it.first } - pad
     val maxX = pts.maxOf { it.first } + pad
     val minY = pts.minOf { it.second } - pad
     val maxY = pts.maxOf { it.second } + pad
     scale = minOf(1.8f * density, size.width / (maxX - minX), size.height / (maxY - minY))
     offset = Offset(size.width / 2f - (minX + maxX) / 2f * scale, size.height / 2f - (minY + maxY) / 2f * scale)
+    userMoved = false
+  }
+
+  /** Se o jogo cresceu para fora da tela e a pessoa não mexeu no zoom à mão, reajusta o enquadramento. */
+  fun ensureVisible(cells: List<Pair<Int, Int>>, density: Float) {
+    if (userMoved || size.width == 0 || size.height == 0 || cells.isEmpty()) return
+    val margin = EDGE * 0.45f * scale
+    val outOfBounds =
+      cells.any { (r, c) ->
+        val s = cellToScreen(r, c)
+        s.x < margin || s.x > size.width - margin || s.y < margin || s.y > size.height - margin
+      }
+    if (outOfBounds) fit(cells, density)
   }
 
   /** Centro da célula na tela (px, relativo ao tabuleiro). */
   fun cellToScreen(r: Int, c: Int): Offset {
-    val p = cellPoints(r, c)
-    return Offset((p[0].x + p[1].x + p[2].x) / 3f, (p[0].y + p[1].y + p[2].y) / 3f) * scale + offset
+    val (cx, cy) = Geometry.cellCenter(r, c, EDGE)
+    return Offset(cx, cy) * scale + offset
   }
 }
 
@@ -67,19 +81,28 @@ fun BoardCanvas(
   ghosts: List<GhostCell>,
   camera: BoardCamera,
   fitKey: Any,
-  onTap: (Int, Int) -> Unit,
+  onTap: (Int, Int, Float, Float) -> Unit,
   modifier: Modifier = Modifier,
   /** Pedras da ponte/mandala que acabou de sair (brilham por um tempo). */
   glowing: Set<Pair<Int, Int>> = emptySet(),
 ) {
   val density = LocalDensity.current.density
   LaunchedEffect(fitKey, camera.size) { camera.fit(board.map { it.r to it.c }, density) }
-  val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(
-    0f,
-    1f,
-    infiniteRepeatable(tween(1100, easing = LinearEasing), RepeatMode.Reverse),
-    label = "pulse",
-  )
+  LaunchedEffect(board.size) { camera.ensureVisible(board.map { it.r to it.c }, density) }
+
+  // Só anima o pulso quando há espaços livres visíveis, prévia ou comemoração (economiza bateria/GPU com a mesa parada).
+  val needsPulse = ghosts.isNotEmpty() || glowing.isNotEmpty()
+  val pulse =
+    if (needsPulse) {
+      val transition = rememberInfiniteTransition(label = "pulse")
+      val p by transition.animateFloat(
+        0f,
+        1f,
+        infiniteRepeatable(tween(1100, easing = LinearEasing), RepeatMode.Reverse),
+        label = "pulse",
+      )
+      p
+    } else 0f
 
   Canvas(
     modifier
@@ -90,13 +113,14 @@ fun BoardCanvas(
           val f = newScale / camera.scale
           camera.offset = centroid - (centroid - camera.offset) * f + pan
           camera.scale = newScale
+          if (zoom != 1f || pan != Offset.Zero) camera.userMoved = true
         }
       }
       .pointerInput(Unit) {
         detectTapGestures { p ->
           val w = (p - camera.offset) / camera.scale
           val (r, c) = Geometry.cellAt(w.x, w.y, EDGE)
-          onTap(r, c)
+          onTap(r, c, w.x, w.y)
         }
       }
   ) {

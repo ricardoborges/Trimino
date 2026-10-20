@@ -222,7 +222,7 @@ class SiteViewModel(app: Application) : AndroidViewModel(app) {
   }
 
   fun openCode(raw: String, watch: Boolean) {
-    val code = raw.uppercase().filter { it in 'A'..'Z' || it in '0'..'9' }.take(12)
+    val code = parseRoomCode(raw)
     if (code.isNotEmpty()) open(Entry(code, watch))
   }
 
@@ -232,8 +232,15 @@ class SiteViewModel(app: Application) : AndroidViewModel(app) {
 
   /** Link de convite (https://<site>/mesa/CODIGO): entra direto, ou depois de a pessoa entrar no site. */
   fun invite(code: String, watch: Boolean) {
-    val entry = Entry(code.uppercase().filter { it.isLetterOrDigit() }.take(12), watch)
+    val entry = Entry(parseRoomCode(code), watch)
     if (entry.room.isEmpty()) return
     if (screen == Screen.Varanda) open(entry) else invitedTo = entry
   }
+}
+
+/** Extrai o código da mesa mesmo se a pessoa colar o link inteiro ou o texto do WhatsApp. */
+fun parseRoomCode(raw: String): String {
+  Regex("/mesa/([A-Za-z0-9]{1,12})").find(raw)?.groupValues?.get(1)?.let { return it.uppercase() }
+  Regex("[?&]sala=([A-Za-z0-9]{1,12})").find(raw)?.groupValues?.get(1)?.let { return it.uppercase() }
+  return raw.uppercase().filter { it in 'A'..'Z' || it in '0'..'9' }.take(12)
 }

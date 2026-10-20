@@ -16,14 +16,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -99,17 +109,34 @@ fun SiteField(
   modifier: Modifier = Modifier,
   password: Boolean = false,
   keyboard: KeyboardOptions = KeyboardOptions.Default,
+  keyboardActions: KeyboardActions = KeyboardActions.Default,
 ) {
+  var showPassword by rememberSaveable { mutableStateOf(false) }
   OutlinedTextField(
     value,
     onChange,
     label = { Text(label) },
     singleLine = true,
-    visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
+    visualTransformation = if (password && !showPassword) PasswordVisualTransformation() else VisualTransformation.None,
+    trailingIcon =
+      if (password) {
+        {
+          IconButton(onClick = { showPassword = !showPassword }) {
+            Icon(
+              if (showPassword) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+              contentDescription = if (showPassword) "Ocultar senha" else "Mostrar senha",
+              tint = Muted,
+            )
+          }
+        }
+      } else null,
     keyboardOptions = keyboard,
+    keyboardActions = keyboardActions,
     shape = RoundedCornerShape(10.dp),
     colors =
       OutlinedTextFieldDefaults.colors(
+        focusedTextColor = TextColor,
+        unfocusedTextColor = TextColor,
         focusedContainerColor = FeltDeep,
         unfocusedContainerColor = FeltDeep,
         focusedBorderColor = Accent,

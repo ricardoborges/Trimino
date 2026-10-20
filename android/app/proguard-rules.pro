@@ -8,5 +8,6 @@
 
 # Protocolo (kotlinx.serialization): as classes @Serializable e seus serializers gerados.
 -keep,includedescriptorclasses class com.example.trimino.net.**$$serializer { *; }
+-keep class com.example.trimino.net.StringListSerializer { *; }
 -keepclassmembers class com.example.trimino.net.** { *** Companion; kotlinx.serialization.KSerializer serializer(...); }
 -keepattributes *Annotation*, InnerClasses
