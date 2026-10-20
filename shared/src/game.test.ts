@@ -446,4 +446,20 @@ describe("TriminoGame", () => {
       }
     });
   });
+
+  it("toSnapshot / fromSnapshot preserva o estado completo da partida em andamento", () => {
+    const g = started(7, 400);
+    open(g);
+    const id = g.current.id;
+    g.draw(id);
+    const snap = JSON.parse(JSON.stringify(g.toSnapshot()));
+    const restored = TriminoGame.fromSnapshot(snap, seeded(7));
+    expect(restored.phase).toBe(g.phase);
+    expect(restored.round).toBe(g.round);
+    expect(restored.turn).toBe(g.turn);
+    expect(restored.drawsThisTurn).toBe(g.drawsThisTurn);
+    expect([...restored.board.entries()]).toEqual([...g.board.entries()]);
+    expect(restored.players).toEqual(g.players);
+    expect(restored.pool).toEqual(g.pool);
+  });
 });

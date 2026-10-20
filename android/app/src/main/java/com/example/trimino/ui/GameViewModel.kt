@@ -190,6 +190,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         syncWatchedPile()
       }
       is ServerMessage.State -> onState(msg.state)
+      is ServerMessage.Pong -> Unit
       is ServerMessage.Error -> {
         if (isMyTurn && preview != null) errorSeq++
         showToast(msg.message)

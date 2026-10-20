@@ -552,4 +552,83 @@ export class TriminoGame {
     this.log.push(entry);
     if (this.log.length > 50) this.log.shift();
   }
+
+  toSnapshot(): GameSnapshot {
+    return {
+      phase: this.phase,
+      round: this.round,
+      targetScore: this.targetScore,
+      players: this.players.map((p) => ({ ...p, hand: [...p.hand], marks: [...p.marks] })),
+      pool: [...this.pool],
+      board: [...this.board.entries()],
+      vertices: [...this.vertices.entries()],
+      turn: this.turn,
+      drawsThisTurn: this.drawsThisTurn,
+      consecutivePasses: this.consecutivePasses,
+      lotteryPool: [...this.lotteryPool],
+      lotteryPicks: [...this.lotteryPicks],
+      lotteryWinnerId: this.lotteryWinnerId,
+      starter: this.starter,
+      roundStart: [...this.roundStart.entries()],
+      roundSummary: this.roundSummary,
+      winnerId: this.winnerId,
+      endedByForfeit: this.endedByForfeit,
+      celebration: this.celebration,
+      finalLap: this.finalLap ? { batedorId: this.finalLap.batedorId, pending: [...this.finalLap.pending] } : null,
+      log: [...this.log],
+    };
+  }
+
+  static fromSnapshot(s: GameSnapshot, random: () => number = Math.random): TriminoGame {
+    const g = Object.create(TriminoGame.prototype) as TriminoGame;
+    Object.assign(g, {
+      targetScore: s.targetScore,
+      random,
+      phase: s.phase,
+      round: s.round,
+      players: s.players.map((p) => ({ ...p, hand: [...p.hand], marks: [...p.marks] })),
+      pool: [...s.pool],
+      board: new Map(s.board),
+      vertices: new Map(s.vertices),
+      turn: s.turn,
+      drawsThisTurn: s.drawsThisTurn,
+      consecutivePasses: s.consecutivePasses,
+      lotteryPool: [...s.lotteryPool],
+      lotteryPicks: [...s.lotteryPicks],
+      lotteryWinnerId: s.lotteryWinnerId,
+      starter: s.starter,
+      roundStart: new Map(s.roundStart),
+      roundSummary: s.roundSummary,
+      winnerId: s.winnerId,
+      endedByForfeit: s.endedByForfeit,
+      celebration: s.celebration,
+      finalLap: s.finalLap ? { batedorId: s.finalLap.batedorId, pending: [...s.finalLap.pending] } : null,
+      log: [...s.log],
+    });
+    return g;
+  }
+}
+
+export interface GameSnapshot {
+  phase: Phase;
+  round: number;
+  targetScore: number;
+  players: GamePlayer[];
+  pool: Tile[];
+  board: [string, BoardCell][];
+  vertices: [string, number][];
+  turn: number;
+  drawsThisTurn: number;
+  consecutivePasses: number;
+  lotteryPool: Tile[];
+  lotteryPicks: LotPick[];
+  lotteryWinnerId: string | null;
+  starter: number;
+  roundStart: [string, { score: number; marks: number }][];
+  roundSummary: RoundSummary | null;
+  winnerId: string | null;
+  endedByForfeit: boolean;
+  celebration: Celebration | null;
+  finalLap: { batedorId: string; pending: string[] } | null;
+  log: LogEntry[];
 }

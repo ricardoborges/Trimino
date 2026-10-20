@@ -175,6 +175,8 @@ sealed interface SignalData {
   @Serializable
   @SerialName("ice")
   data class Ice(val candidate: String, val sdpMid: String?, val sdpMLineIndex: Int?) : SignalData
+
+  @Serializable @SerialName("renegotiate") data object Renegotiate : SignalData
 }
 
 /**
@@ -257,6 +259,8 @@ sealed interface ClientMessage {
   @Serializable @SerialName("pass") data object Pass : ClientMessage
 
 
+  @Serializable @SerialName("ping") data object Ping : ClientMessage
+
   @Serializable @SerialName("signal") data class Signal(val to: String, val data: SignalData) : ClientMessage
 }
 
@@ -291,6 +295,8 @@ sealed interface ServerMessage {
   /** O que o jogador da vez (`from`) está fazendo. */
   @Serializable @SerialName("intent") data class PlayerIntent(val from: String, val intent: Intent) : ServerMessage
 
+
+  @Serializable @SerialName("pong") data object Pong : ServerMessage
 
   @Serializable @SerialName("error") data class Error(val message: String) : ServerMessage
 }

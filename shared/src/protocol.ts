@@ -183,12 +183,15 @@ export interface IceServer {
 
 export type SignalData =
   | { type: "offer" | "answer"; sdp: string }
-  | { type: "ice"; candidate: string; sdpMid: string | null; sdpMLineIndex: number | null };
+  | { type: "ice"; candidate: string; sdpMid: string | null; sdpMLineIndex: number | null }
+  | { type: "renegotiate" };
 
 export type ClientMessage =
   /** `watch`: entra como espectador (só assiste; não ocupa lugar na mesa). */
   /** `resume`: identidade usada antes nesta mesa (aba fechada sem querer); o servidor devolve o lugar se ele estiver vago. */
   | { t: "join"; room: string; name: string; clientId: string; resume?: string; watch?: boolean }
+  /** Mantém a conexão viva e detecta quedas silenciosas de rede. */
+  | { t: "ping" }
   /** Espectador: ocupa um lugar livre (fora de partida). */
   | { t: "sit" }
   /** Espectador: pede para entrar na videoconferência. */
@@ -236,6 +239,7 @@ export type ServerMessage =
   /** O que o jogador da vez (`from`) está fazendo; vale até a próxima intenção ou até a vez passar. */
   | { t: "intent"; from: string; intent: Intent }
   | { t: "signal"; from: string; data: SignalData }
+  | { t: "pong" }
   | { t: "error"; message: string };
 
 // ---------------- API HTTP (site, varanda e contas) ----------------

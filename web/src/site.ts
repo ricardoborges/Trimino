@@ -35,6 +35,13 @@ interface Me {
 const GUEST_KEY = "trimino.guest";
 const NAME_KEY = "trimino.name";
 const MEDIA_KEY = "trimino.media";
+const ACTIVE_ROOM_KEY = "trimino.activeRoom";
+const seatKey = (code: string) => `trimino.seat.${code}`;
+
+export const rememberActiveRoom = (code: string) => storage.set(ACTIVE_ROOM_KEY, code);
+export const forgetActiveRoom = (code?: string) => {
+  if (!code || storage.get(ACTIVE_ROOM_KEY) === code) storage.del(ACTIVE_ROOM_KEY);
+};
 
 const mesaPath = (code: string, watch = false) => `/mesa/${encodeURIComponent(code)}${watch ? "?assistir=1" : ""}`;
 export const mesaUrl = (code: string) => `${location.origin}/mesa/${encodeURIComponent(code)}`;
@@ -65,6 +72,7 @@ export async function enterSite(): Promise<Entry> {
   if (legacy) history.replaceState(null, "", mesaPath(legacy.toUpperCase()));
 
   const me = await api<Me>("/api/me").catch((): Me => ({ user: null, stats: null }));
+  if (me.user?.name) storage.set(NAME_KEY, me.user.name);
   const config = await api<{ google: boolean }>("/api/config").catch(() => ({ google: false }));
 
   return new Promise<Entry>((resolve) => {
@@ -76,11 +84,14 @@ export async function enterSite(): Promise<Entry> {
     function route(): void {
       const path = location.pathname;
       const mesa = path.match(/^\/mesa\/([A-Za-z0-9]{1,12})\/?$/);
-      const name = me.user?.name ?? guestName();
-      if (mesa && name) {
+      const roomCode = mesa?.[1].toUpperCase() ?? null;
+      // Se recarregou /mesa/CODIGO durante uma oscilação de rede e já tinha assento/nome salvo, entra direto.
+      const fallbackName = roomCode && storage.get(seatKey(roomCode)) ? storage.get(NAME_KEY) : null;
+      const name = me.user?.name ?? guestName() ?? fallbackName;
+      if (mesa && roomCode && name) {
         $("site").hidden = true;
         resolve({
-          room: mesa[1].toUpperCase(),
+          room: roomCode,
           watch: new URLSearchParams(location.search).has("assistir"),
           name,
           media: wantsMedia(),
@@ -90,7 +101,7 @@ export async function enterSite(): Promise<Entry> {
       }
       $("site").hidden = false;
       if (path === "/varanda" && name) return showVaranda(me, name);
-      showLanding(me, config.google, mesa?.[1].toUpperCase() ?? null, path === "/varanda" ? "/varanda" : mesa ? path + location.search : null);
+      showLanding(me, config.google, roomCode, path === "/varanda" ? "/varanda" : mesa ? path + location.search : null);
     }
 
     // Links internos sem recarregar a página.
@@ -184,12 +195,14 @@ function showLanding(me: Me, google: boolean, invitedTo: string | null, next: st
   submit("login-form", async (d) => {
     const { user } = await api<{ user: UserInfo }>("/api/login", { email: d.get("email"), password: d.get("password") });
     storage.del(GUEST_KEY);
+    if (user?.name) storage.set(NAME_KEY, user.name);
     const fresh = await api<Me>("/api/me");
     onLoggedIn(user, fresh.stats);
   });
   submit("signup-form", async (d) => {
     const { user } = await api<{ user: UserInfo }>("/api/signup", { name: d.get("name"), email: d.get("email"), password: d.get("password") });
     storage.del(GUEST_KEY);
+    if (user?.name) storage.set(NAME_KEY, user.name);
     onLoggedIn(user, null);
   });
   submit("guest-form", async (d) => {
@@ -349,12 +362,29 @@ function showVaranda(me: Me, name: string): void {
   guest = !me.user;
   $("create-form").hidden = guest;
   $("create-guest").hidden = !guest;
-  // Aviso vindo de uma mesa que recusou a entrada (?aviso=...).
+  // Aviso vindo de uma mesa que recusou a entrada (?aviso=...) ou atalho para voltar à mesa recente.
   const params = new URLSearchParams(location.search);
   const notice = params.get("aviso");
-  $("varanda-notice").hidden = !notice;
-  $("varanda-notice").textContent = notice ?? "";
-  if (notice) history.replaceState(null, "", "/varanda");
+  if (notice) forgetActiveRoom();
+  const activeRoom = !notice ? storage.get(ACTIVE_ROOM_KEY) : null;
+  const noticeEl = $("varanda-notice");
+  noticeEl.replaceChildren();
+  if (notice) {
+    noticeEl.hidden = false;
+    noticeEl.textContent = notice;
+    history.replaceState(null, "", "/varanda");
+  } else if (activeRoom) {
+    noticeEl.hidden = false;
+    const span = Object.assign(document.createElement("span"), { textContent: `Você estava na Mesa ${activeRoom}. ` });
+    const back = Object.assign(document.createElement("a"), {
+      className: "primary button-link small",
+      href: mesaPath(activeRoom),
+      textContent: "Voltar à mesa",
+    });
+    noticeEl.append(span, back);
+  } else {
+    noticeEl.hidden = true;
+  }
 
   renderStats(me);
   loadRanking();
@@ -527,8 +557,13 @@ function mesaCard(m: MesaSummary): HTMLElement {
 
   const foot = document.createElement("footer");
   foot.append(Object.assign(document.createElement("span"), { className: "muted", textContent: `👁 ${m.spectators} assistindo` }));
-  if (m.seatsFree > 0) {
-    const sit = Object.assign(document.createElement("a"), { className: "primary button-link", href: mesaPath(m.code), textContent: "Entrar" });
+  const currentName = (storage.get(NAME_KEY) ?? "").trim().toLowerCase();
+  const hasSavedSeat = !!storage.get(seatKey(m.code));
+  const hasOfflineSeat = m.players.some((p) => !p.bot && !p.connected);
+  const myOfflineSeat = !!currentName && m.players.some((p) => !p.bot && !p.connected && p.name.trim().toLowerCase() === currentName);
+  if (m.seatsFree > 0 || hasSavedSeat || hasOfflineSeat) {
+    const label = hasSavedSeat || myOfflineSeat ? "Voltar à mesa" : "Entrar";
+    const sit = Object.assign(document.createElement("a"), { className: "primary button-link", href: mesaPath(m.code), textContent: label });
     foot.append(sit);
   }
   foot.append(Object.assign(document.createElement("a"), { className: "secondary button-link", href: mesaPath(m.code, true), textContent: "Assistir" }));

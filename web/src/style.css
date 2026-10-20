@@ -319,7 +319,22 @@ label.check { display: flex; align-items: center; gap: 8px; }
   background: #071a13; box-shadow: inset 0 0 0 2px var(--owner, transparent);
 }
 .video.turn { box-shadow: inset 0 0 0 3px var(--accent); }
-.video video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.video.away { opacity: 0.65; }
+.video video { width: 100%; height: 100%; object-fit: cover; display: block; position: relative; z-index: 1; }
+.video.no-video video { opacity: 0; }
+.video-fallback {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  pointer-events: none;
+}
+.video-initial {
+  width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+  font-weight: 800; font-size: 15px; color: #fff;
+  background: color-mix(in srgb, var(--owner, var(--panel-2)) 75%, #000);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+.video-state { font-size: 10px; color: var(--muted); }
+.video.away .video-state { color: var(--danger); font-weight: 600; }
+.video .role, .video figcaption, .video .kick { z-index: 2; }
 .video .role {
   position: absolute; left: 6px; top: 4px; font-size: 10px; font-weight: 600; letter-spacing: 0.02em;
   padding: 1px 6px; border-radius: 6px; color: #fff;

@@ -225,6 +225,7 @@ class Mesh(
             val c = IceCandidate(data.sdpMid ?: "0", data.sdpMLineIndex ?: 0, data.candidate)
             if (peer.remoteSet) peer.pc.addIceCandidate(c) else peer.pendingIce += c
           }
+          is SignalData.Renegotiate -> call(from)
         }
       }.onFailure { Log.e(TAG, "signal de $from", it) }
     }

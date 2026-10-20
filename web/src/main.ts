@@ -10,7 +10,7 @@ import { Connection } from "./net.ts";
 import { Mesh } from "./rtc.ts";
 import { Settlement } from "./settlement.ts";
 import { DrawPile } from "./drawPile.ts";
-import { enterSite, mesaUrl, whatsappUrl, type Entry } from "./site.ts";
+import { enterSite, forgetActiveRoom, mesaUrl, rememberActiveRoom, whatsappUrl, type Entry } from "./site.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const PLAYER_COLORS = ["#d9534f", "#3a7bd5", "#e0a526", "#8e5cc8"];
@@ -39,6 +39,33 @@ function lastSeat(room: string): string | undefined {
 }
 function rememberSeat(room: string, id: string): void {
   try { localStorage.setItem(seatKey(room), id); } catch { /* sem storage */ }
+}
+
+/**
+ * Se nenhuma outra aba deste navegador estiver aberta na mesma sala, reaproveita o assento salvo
+ * diretamente como `clientId`, para recuperar o lugar na hora mesmo se a conexão antiga ainda estiver zumbi no servidor.
+ */
+async function resolveClientId(room: string): Promise<string> {
+  const saved = lastSeat(room);
+  let existing: string | null = null;
+  try { existing = sessionStorage.getItem("trimino.clientId"); } catch { /* sem storage */ }
+  if (navigator.locks?.request) {
+    let canReuse = false;
+    await new Promise<void>((resolve) => {
+      navigator.locks
+        .request(`trimino.tab.${room}`, { ifAvailable: true }, (lock) => {
+          canReuse = !!lock;
+          resolve();
+          return lock ? new Promise<void>(() => {}) : Promise.resolve();
+        })
+        .catch(() => resolve());
+    });
+    if (!existing && canReuse && saved) {
+      try { sessionStorage.setItem("trimino.clientId", saved); } catch { /* sem storage */ }
+      return saved;
+    }
+  }
+  return clientId();
 }
 
 // ---------------- site ----------------
@@ -85,6 +112,7 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
     $("view").textContent = top ? "3D" : "Topo";
   };
   const videos = new Map<string, HTMLElement>();
+  const streams = new Map<string, MediaStream>();
 
   const mesh = new Mesh(
     (to, data) => conn.send({ t: "signal", to, data }),
@@ -118,7 +146,7 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
   if (import.meta.env.DEV) Object.assign(window, { __trimino: { board, confetti, get state() { return state; } } });
 
   let myId = "";
-  const myClientId = clientId();
+  const myClientId = await resolveClientId(room);
   const resume = lastSeat(room);
   const conn = new Connection({ t: "join", room, name, clientId: myClientId, resume: resume !== myClientId ? resume : undefined, watch }, onMessage, (online) => {
     $("status").textContent = online ? "" : "reconectando…";
@@ -126,13 +154,18 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
   });
 
   conn.onKicked = () => toast("Você entrou nesta sala em outra janela. Esta foi desconectada.");
-  conn.onRefused = (reason) => location.replace(`/varanda?aviso=${encodeURIComponent(reason)}`);
+  conn.onRefused = (reason) => {
+    forgetActiveRoom(room);
+    location.replace(`/varanda?aviso=${encodeURIComponent(reason)}`);
+  };
 
   function onMessage(msg: ServerMessage): void {
     switch (msg.t) {
       case "welcome":
         myId = msg.you;
+        mesh.myId = myId;
         rememberSeat(room, myClientId);
+        rememberActiveRoom(room);
         mesh.iceServers = msg.iceServers;
         mesh.closeAll();
         if (msg.inCall ?? true) void enterCall(msg.peers);
@@ -153,10 +186,15 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
       case "peerLeft":
         mesh.close(msg.id);
         break;
-      case "state":
-        state = msg.state;
+      case "state": {
+        const s = msg.state;
+        state = s;
+        const me = s.players.find((p) => p.id === s.you.id);
+        if (s.phase === "gameOver" || me?.out) forgetActiveRoom(room);
+        else if (me && !me.spectator) rememberActiveRoom(room);
         render();
         break;
+      }
       case "intent":
         if (msg.from !== state?.turnPlayerId) break;
         remote = msg.intent.kind === "idle" ? null : { from: msg.from, intent: msg.intent };
@@ -173,15 +211,15 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
   /** Entra na videoconferência e oferta para quem já está nela. */
   async function enterCall(peers: string[]): Promise<void> {
     mesh.closeAll();
-    // Espectador liberado pelo anfitrião: só agora pede câmera e microfone.
-    if (!mesh.local && (withMedia || watch) && navigator.mediaDevices) {
-      await mesh.startLocal();
+    // Espectador liberado pelo anfitrião ou reconexão após bloqueio de tela: garante câmera/microfone ativos.
+    if ((withMedia || watch) && navigator.mediaDevices) {
+      await mesh.ensureLocal();
       if (!mesh.local) toast("Não foi possível acessar câmera/microfone.");
     }
     inCall = true;
-    setVideo(myId, mesh.local, true);
     syncMediaButtons();
     for (const p of peers) mesh.call(p).catch(console.error);
+    labelVideos();
     render();
   }
 
@@ -189,44 +227,107 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
   function leaveCall(): void {
     inCall = false;
     mesh.closeAll();
+    streams.clear();
     mesh.local?.getTracks().forEach((t) => t.stop());
     mesh.local = null;
-    videos.get(myId)?.remove();
-    videos.delete(myId);
+    for (const box of videos.values()) box.remove();
+    videos.clear();
     syncMediaButtons();
     render();
   }
 
-  function setVideo(id: string, stream: MediaStream | null, self = false): void {
-    let box = videos.get(id);
-    if (!stream && !self) {
-      box?.remove();
-      videos.delete(id);
-      return;
-    }
-    if (!box) {
-      box = document.createElement("figure");
-      box.className = "video";
-      box.dataset.id = id;
-      const v = document.createElement("video");
-      v.autoplay = true;
-      v.playsInline = true;
-      v.muted = self;
-      box.append(v, Object.assign(document.createElement("span"), { className: "role" }), document.createElement("figcaption"));
-      if (self) $("videos").prepend(box);
-      else $("videos").append(box);
-      videos.set(id, box);
-    }
-    const v = box.querySelector("video")!;
-    if (v.srcObject !== stream) v.srcObject = stream;
-    v.play().catch(() => {});
+  function setVideo(id: string, stream: MediaStream | null): void {
+    if (stream) streams.set(id, stream);
+    else streams.delete(id);
     labelVideos();
   }
 
+  function ensureVideoBox(id: string): HTMLElement {
+    let box = videos.get(id);
+    if (box) return box;
+    box = document.createElement("figure");
+    box.className = "video no-video";
+    box.dataset.id = id;
+    const fallback = document.createElement("div");
+    fallback.className = "video-fallback";
+    fallback.append(
+      Object.assign(document.createElement("span"), { className: "video-initial" }),
+      Object.assign(document.createElement("small"), { className: "video-state" }),
+    );
+    const v = document.createElement("video");
+    v.autoplay = true;
+    v.playsInline = true;
+    box.append(fallback, v, Object.assign(document.createElement("span"), { className: "role" }), document.createElement("figcaption"));
+    $("videos").append(box);
+    videos.set(id, box);
+    return box;
+  }
+
+  /**
+   * Sincroniza os cartões de câmera com os participantes da mesa.
+   * Jogadores humanos sentados nunca perdem o cartão durante a partida (mesmo se desligarem a câmera,
+   * se o WebRTC estiver reconectando ou se a internet deles oscilar).
+   */
   function labelVideos(): void {
-    for (const [id, box] of videos) {
-      const p = state?.players.find((p) => p.id === id);
-      box.querySelector("figcaption")!.textContent = (p?.name ?? "…") + (id === myId ? " (você)" : "");
+    if (!inCall) {
+      for (const box of videos.values()) box.remove();
+      videos.clear();
+      return;
+    }
+    const wantIds: string[] = [];
+    const addId = (id: string) => {
+      if (id && !wantIds.includes(id)) wantIds.push(id);
+    };
+    if (myId) addId(myId);
+    for (const p of state?.players ?? []) {
+      if (p.bot || p.out) continue;
+      if (!p.spectator || (p.inCall && p.connected)) addId(p.id);
+    }
+    for (const id of streams.keys()) {
+      const p = state?.players.find((x) => x.id === id);
+      if (!state || (p && !p.bot && !p.out)) addId(id);
+    }
+
+    for (const [id, box] of [...videos.entries()]) {
+      if (!wantIds.includes(id)) {
+        box.remove();
+        videos.delete(id);
+      }
+    }
+
+    const container = $("videos");
+    for (const id of wantIds) {
+      const box = ensureVideoBox(id);
+      if (container.lastElementChild !== box) container.append(box);
+
+      const self = id === myId;
+      const p = state?.players.find((x) => x.id === id);
+      const stream = self ? mesh.local : (streams.get(id) ?? null);
+      const v = box.querySelector("video")!;
+      v.muted = self;
+      if (v.srcObject !== stream) v.srcObject = stream;
+      if (stream && stream.getTracks().some((t) => t.readyState === "live")) {
+        v.play().catch(() => {});
+      }
+
+      const online = self || !p || p.connected;
+      const hasVideo =
+        online &&
+        !!stream?.getVideoTracks().some((t) => t.readyState === "live" && t.enabled && (self || !t.muted));
+      box.classList.toggle("no-video", !hasVideo);
+      box.classList.toggle("away", !online);
+
+      const displayName = p?.name ?? (self ? name : "…");
+      box.querySelector(".video-initial")!.textContent = displayName.trim().slice(0, 1).toUpperCase() || "?";
+      const pcState = !self ? mesh.peerState(id) : null;
+      const hasAudio = online && !!stream?.getAudioTracks().some((t) => t.readyState === "live" && t.enabled);
+      box.querySelector(".video-state")!.textContent = !online
+        ? "offline"
+        : !self && !hasVideo && !hasAudio && (pcState === "new" || pcState === "connecting" || pcState === "disconnected" || pcState === "failed")
+          ? "conectando…"
+          : "";
+
+      box.querySelector("figcaption")!.textContent = displayName + (self ? " (você)" : "");
       box.classList.toggle("turn", state?.turnPlayerId === id);
       // Papel na mesa: jogador (com a cor do assento, igual ao placar) ou espectador.
       const spectator = !!p?.spectator;
@@ -237,7 +338,7 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
       // anfitrião: ✕ para tirar o espectador da conversa
       const host = !!state?.players.find((x) => x.id === myId)?.isHost;
       let kick = box.querySelector<HTMLButtonElement>(".kick");
-      if (host && spectator && id !== myId) {
+      if (host && spectator && !self) {
         if (!kick) {
           kick = Object.assign(document.createElement("button"), { className: "kick", textContent: "✕", title: "Tirar da conversa" });
           kick.dataset.action = "end";
@@ -247,8 +348,21 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
       } else kick?.remove();
       const seat = state?.players.filter((x) => !x.spectator).findIndex((x) => x.id === id) ?? -1;
       box.style.setProperty("--owner", !spectator && seat >= 0 ? PLAYER_COLORS[seat % 4] : "transparent");
+
+      if (!self && p && p.connected && p.inCall) {
+        mesh.ensurePeer(id);
+      }
     }
   }
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && inCall && (withMedia || watch) && navigator.mediaDevices) {
+      void mesh.ensureLocal().then(() => {
+        syncMediaButtons();
+        labelVideos();
+      });
+    }
+  });
 
   const mic = $("mic");
   const cam = $("cam");
@@ -265,8 +379,8 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
     mic.toggleAttribute("disabled", !mesh.hasTrack("audio"));
     cam.toggleAttribute("disabled", !mesh.hasTrack("video"));
   };
-  mic.onclick = () => { mesh.setEnabled("audio", !mesh.isEnabled("audio")); syncMediaButtons(); };
-  cam.onclick = () => { mesh.setEnabled("video", !mesh.isEnabled("video")); syncMediaButtons(); };
+  mic.onclick = () => { mesh.setEnabled("audio", !mesh.isEnabled("audio")); syncMediaButtons(); labelVideos(); };
+  cam.onclick = () => { mesh.setEnabled("video", !mesh.isEnabled("video")); syncMediaButtons(); labelVideos(); };
   syncMediaButtons();
 
   // Espectador: pedir para entrar na conversa, cancelar o pedido ou sair dela.
@@ -404,6 +518,7 @@ async function start({ name, room, watch, media: withMedia }: Entry): Promise<vo
       ? "Desistir da partida? Os outros jogadores continuam o jogo sem você."
       : "Sair da sala?";
     if (!confirm(question)) return;
+    forgetActiveRoom(room);
     if (playing) conn.send({ t: "forfeit" });
     // dá tempo de a mensagem sair antes de fechar a conexão
     setTimeout(() => {

@@ -1,4 +1,4 @@
-import { MAX_PLAYERS, MIN_PLAYERS, RuleError, TriminoGame, fullSet, rotated, type ClientMessage, type GameState, type Intent, type MesaSummary, type ServerMessage, type Tile, type TokenLog } from "@trimino/shared";
+import { MAX_PLAYERS, MIN_PLAYERS, RuleError, TriminoGame, fullSet, rotated, type ClientMessage, type GameSnapshot, type GameState, type Intent, type MesaSummary, type ServerMessage, type Tile, type TokenLog } from "@trimino/shared";
 import { chooseMove, model } from "./ai.ts";
 
 /** O mínimo de um WebSocket que a sala usa (serve o do Workers e o do pacote `ws`). */
@@ -14,6 +14,8 @@ export interface Member {
   name: string;
   ws: Socket | null;
   joinedAt: number;
+  /** Último contato recebido deste membro (ping ou ação). */
+  lastSeen?: number;
   /** Jogador IA controlado pelo servidor (sem conexão). */
   bot?: boolean;
   /** Conta do jogador; ausente para convidados e robôs. */
@@ -30,6 +32,14 @@ export interface Member {
   inCall?: boolean;
 }
 
+export interface RoomSnapshot {
+  title: string;
+  tokens: TokenLog;
+  recorded: boolean;
+  members: Omit<Member, "ws" | "inCall" | "callRequested" | "callApproved">[];
+  game: GameSnapshot | null;
+}
+
 /** Resultado de uma partida terminada, para as estatísticas. */
 export interface MatchResult {
   code: string;
@@ -41,6 +51,8 @@ export interface MatchResult {
 const LOTTERY_REVEAL_MS = 3500;
 /** Pausa antes de cada ação do robô, para os humanos acompanharem a jogada. */
 const BOT_DELAY_MS = 1100;
+/** Conexão sem nenhum sinal (nem ping) há mais que isso é considerada caída (zumbi). */
+const STALE_WS_MS = 40_000;
 /** Nomes dos jogadores IA, na ordem em que são adicionados. Todo jogador IA leva "(IA)" no nome. */
 const BOT_NAMES = ["Ricardo (IA)", "Ilana (IA)", "Henrique (IA)"];
 
@@ -81,22 +93,52 @@ export class Room {
     return !this.game || this.game.phase === "gameOver";
   }
 
+  get hasActiveMatch(): boolean {
+    return !this.betweenMatches;
+  }
+
   /** Lugares ocupados por quem vai jogar a próxima partida (conectados e robôs). */
   private get seatsTaken(): number {
     return [...this.members.values()].filter((m) => (m.ws || m.bot) && !m.watch).length;
   }
 
+  /** Conexão travada (internet caiu sem fechar o TCP): não recebe mensagens nem pings há muito tempo. */
+  isStale(m: Member, now = Date.now()): boolean {
+    if (!m.ws || m.bot) return false;
+    if (m.ws.readyState !== 1 /* OPEN */) return true;
+    return now - (m.lastSeen ?? m.joinedAt) > STALE_WS_MS;
+  }
+
+  /** Limpa conexões zumbis para liberar o assento e atualizar o estado dos demais jogadores. */
+  pruneStale(now = Date.now()): void {
+    for (const m of [...this.members.values()]) {
+      if (m.ws && this.isStale(m, now)) {
+        const dead = m.ws;
+        try { dead.close(1001, "Conexão inativa"); } catch { /* já fechou */ }
+        this.leave(m, dead);
+      }
+    }
+  }
+
   /**
-   * Quem volta para a mesa: a mesma aba (`clientId`) ou, se o lugar estiver vago, quem fechou a aba ou o
-   * navegador sem querer (`resume`, guardado no navegador) ou entrou com a mesma conta.
-   * Lugar ocupado por outra conexão não é tomado: duas abas abertas continuam sendo duas pessoas.
+   * Quem volta para a mesa:
+   * - a mesma aba (`clientId`),
+   * - a mesma conta autenticada (`userId`, mesmo se a conexão antiga ainda estiver pendurada),
+   * - quem fechou a aba/navegador sem querer (`resume`, guardado no navegador) quando a vaga está livre ou zumbi,
+   * - durante uma partida em andamento, um jogador sentado que caiu (`!m.ws` ou conexão zumbi) e voltou com o mesmo nome.
+   * Lugar ativamente ocupado por outra aba de convidado não é tomado: duas abas abertas continuam sendo duas pessoas.
    */
-  returning(clientId: string, resume?: string, userId?: string): Member | undefined {
+  returning(clientId: string, resume?: string, userId?: string, name?: string, watch?: boolean): Member | undefined {
     const members = [...this.members.values()].filter((m) => !m.bot);
+    const free = (m: Member) => !m.ws || this.isStale(m);
+    const norm = (s: string) => s.trim().toLowerCase();
     return (
       members.find((m) => m.clientId === clientId) ??
-      (resume ? members.find((m) => !m.ws && m.clientId === resume) : undefined) ??
-      (userId ? members.find((m) => !m.ws && m.userId === userId) : undefined)
+      (userId ? members.find((m) => m.userId === userId) : undefined) ??
+      (resume ? members.find((m) => free(m) && m.clientId === resume) : undefined) ??
+      (!this.betweenMatches && name
+        ? members.find((m) => free(m) && !!this.game?.player(m.id) && !this.game.player(m.id)?.out && norm(m.name) === norm(name))
+        : undefined)
     );
   }
 
@@ -117,17 +159,34 @@ export class Room {
   }
 
   join(ws: Socket, name: string, clientId: string, opts: { watch?: boolean; userId?: string; admin?: boolean; resume?: string } = {}): Member {
-    let member = this.returning(clientId, opts.resume, opts.userId);
+    const now = Date.now();
+    let member = this.returning(clientId, opts.resume, opts.userId, name, opts.watch);
     if (member) {
-      member.ws?.close(4000, "Conectado em outro lugar");
+      const prevWs = member.ws;
+      const sameTab = member.clientId === clientId;
+      const stale = this.isStale(member, now);
       member.ws = ws;
       member.clientId = clientId;
       member.name = name || member.name;
+      if (opts.userId) member.userId = opts.userId;
       member.admin = !!opts.admin;
+      member.lastSeen = now;
+      const seated = !!this.game?.player(member.id);
+      if (seated) {
+        this.game!.player(member.id)!.name = member.name;
+        if (!this.betweenMatches) member.watch = false;
+      } else if (this.betweenMatches && opts.watch !== undefined) {
+        member.watch = !!opts.watch;
+      }
+      if (prevWs && prevWs !== ws) {
+        try {
+          prevWs.close(sameTab || stale ? 1000 : 4000, sameTab || stale ? "Reconectado" : "Conectado em outro lugar");
+        } catch { /* já fechou */ }
+      }
     } else {
       // Sem lugar livre, quem chega fica assistindo.
       const watch = !!opts.watch || (this.betweenMatches && this.seatsTaken >= MAX_PLAYERS);
-      member = { id: newId(), clientId, name: name || "Jogador", ws, joinedAt: Date.now(), userId: opts.userId, admin: !!opts.admin, watch };
+      member = { id: newId(), clientId, name: name || "Jogador", ws, joinedAt: now, lastSeen: now, userId: opts.userId, admin: !!opts.admin, watch };
       this.members.set(member.id, member);
     }
     member.inCall = this.inCallOf(member);
@@ -149,8 +208,12 @@ export class Room {
   }
 
   handle(member: Member, msg: ClientMessage): void {
+    member.lastSeen = Date.now();
     try {
       switch (msg.t) {
+        case "ping":
+          if (member.ws) send(member.ws, { t: "pong" });
+          return;
         case "start":
           if (member.id !== this.hostId) throw new RuleError("Só o anfitrião pode iniciar.");
           if (this.game && this.game.phase !== "gameOver") throw new RuleError("A partida já começou.");
@@ -534,6 +597,42 @@ export class Room {
 
   broadcast(msg: ServerMessage): void {
     for (const m of this.members.values()) if (m.ws) send(m.ws, msg);
+  }
+
+  toSnapshot(): RoomSnapshot {
+    const g = this.game;
+    const seated = (id: string) => !!g?.player(id);
+    return {
+      title: this.title,
+      tokens: this.tokens,
+      recorded: !!g && this.recorded === g,
+      members: [...this.members.values()]
+        .filter((m) => m.bot || m.ws || seated(m.id))
+        .map(({ id, clientId, name, joinedAt, lastSeen, bot, userId, admin, watch }) => ({
+          id,
+          clientId,
+          name,
+          joinedAt,
+          lastSeen,
+          bot,
+          userId,
+          admin,
+          watch,
+        })),
+      game: g ? g.toSnapshot() : null,
+    };
+  }
+
+  restore(snap: RoomSnapshot): void {
+    this.title = snap.title || this.title;
+    if (snap.tokens) this.tokens = snap.tokens;
+    this.members.clear();
+    for (const m of snap.members ?? []) {
+      this.members.set(m.id, { ...m, ws: null, inCall: false, callRequested: false, callApproved: false });
+    }
+    this.game = snap.game ? TriminoGame.fromSnapshot(snap.game) : null;
+    this.recorded = snap.recorded && this.game ? this.game : null;
+    if (this.game?.lotteryDone) this.beginAfterLottery(this.game);
   }
 }
 

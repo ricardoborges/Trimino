@@ -188,6 +188,19 @@ a = await client("Ana", false, anaCookie, { clientId: `ana-outro-aparelho-${room
 await wait(200);
 check("quem tem conta volta para o mesmo assento", a.id === anaId);
 
+// Mesmo se a conexão anterior ainda estiver pendurada (queda silenciosa de rede), a conta recupera o assento.
+const a2 = await client("Ana", false, anaCookie, { clientId: `ana-apos-queda-${room}` });
+await wait(200);
+check("conta recupera o assento mesmo com conexão anterior pendurada", a2.id === anaId);
+a = a2;
+
+// Convidado sentado na partida que caiu e voltou por outro navegador (sem resume) ou clicando em Assistir recupera o assento.
+b2.ws.close();
+await wait(200);
+b2 = await client("Bia", true, undefined, { clientId: `bia-outro-navegador-${room}` });
+await wait(200);
+check("jogador da partida que volta após queda recupera o assento e entra na chamada", b2.id === b.id && b2.inCall && !a.state?.players.find((p) => p.id === b.id)?.spectator);
+
 // Espectador: assiste sem entrar na conversa; entra só se o anfitrião liberar.
 const c = await client("Caio", true);
 await wait(300);
