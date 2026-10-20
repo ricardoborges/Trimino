@@ -25,6 +25,11 @@ class ProtocolTest {
     )
     val signal = ProtocolJson.encodeToString<ClientMessage>(ClientMessage.Signal("ab", SignalData.Offer("v=0")))
     assertEquals("""{"t":"signal","to":"ab","data":{"type":"offer","sdp":"v=0"}}""", signal)
+    assertEquals("""{"t":"ping"}""", ProtocolJson.encodeToString<ClientMessage>(ClientMessage.Ping))
+    assertEquals(
+      """{"t":"signal","to":"ab","data":{"type":"renegotiate"}}""",
+      ProtocolJson.encodeToString<ClientMessage>(ClientMessage.Signal("ab", SignalData.Renegotiate)),
+    )
   }
 
   @Test
@@ -33,6 +38,11 @@ class ProtocolTest {
       """{"t":"signal","from":"x","data":{"type":"ice","candidate":"c","sdpMid":"0","sdpMLineIndex":0}}"""
     )
     assertEquals(ServerMessage.Signal("x", SignalData.Ice("c", "0", 0)), msg)
+    assertEquals(ServerMessage.Pong, ProtocolJson.decodeFromString<ServerMessage>("""{"t":"pong"}"""))
+    assertEquals(
+      ServerMessage.Signal("x", SignalData.Renegotiate),
+      ProtocolJson.decodeFromString<ServerMessage>("""{"t":"signal","from":"x","data":{"type":"renegotiate"}}"""),
+    )
     val welcome = ProtocolJson.decodeFromString<ServerMessage>(
       """{"t":"welcome","you":"a","room":"R","iceServers":[{"urls":["stun:x"]},{"urls":"stun:y"}],"peers":["b"]}"""
     ) as ServerMessage.Welcome

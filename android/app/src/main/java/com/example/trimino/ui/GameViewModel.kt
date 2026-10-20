@@ -143,12 +143,19 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
       videoOn = false
     }
     mesh = m
+    val resumeSeat = prefs.getString("seat.$code", null)
     socket =
-      GameSocket(api.client, api.wsUrl, ClientMessage.Join(code, name, clientId, watch = watch), ::onMessage, onStatus = { online = it }) { reason ->
+      GameSocket(api.client, api.wsUrl, ClientMessage.Join(code, name, clientId, resume = resumeSeat, watch = watch), ::onMessage, onStatus = { online = it }) { reason ->
+        if (prefs.getString("activeRoom", null) == code) prefs.edit { remove("activeRoom") }
         leave()
         refused = reason.ifBlank { "Não foi possível entrar nessa mesa." }
       }
     joined = true
+  }
+
+  /** Reconecta imediatamente quando o app volta ao primeiro plano. */
+  fun onResume() {
+    socket?.reconnectNow()
   }
 
   private fun enterCall(peers: List<String>) {
@@ -176,7 +183,9 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     when (msg) {
       is ServerMessage.Welcome -> {
         myId = msg.you
+        mesh?.myId = msg.you
         mesh?.iceServers = msg.iceServers
+        prefs.edit { putString("seat.${msg.room}", msg.you) }
         if (msg.inCall) enterCall(msg.peers) else exitCall()
       }
       is ServerMessage.Call -> enterCall(msg.peers)
@@ -253,6 +262,16 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     if (s.round != lastRound && lastRound != -1 && s.round == 1) log.clear()
     log.addAll(fresh)
     val me = s.players.firstOrNull { it.id == s.you.id }
+    val activeMatch = s.phase != "lobby" && s.phase != "gameOver" && me != null && !me.spectator && !me.out
+    if (activeMatch) prefs.edit { putString("activeRoom", s.room) }
+    else if (prefs.getString("activeRoom", null) == s.room) prefs.edit { remove("activeRoom") }
+    if (inCall) {
+      for (pl in s.players) {
+        if (pl.id != s.you.id && !pl.bot && !pl.out && (!pl.spectator || pl.inCall) && pl.connected && pl.inCall) {
+          mesh?.ensurePeer(pl.id)
+        }
+      }
+    }
     if (seenLog.isNotEmpty()) {
       for (e in fresh) if (e.action == "comprou uma peça" && e.actor != null && e.actor != me?.name) notifyDraw(e.actor)
       for (b in placed) {
@@ -609,6 +628,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
   /** Botão "Sair": durante a partida, desiste (os outros continuam) e volta à varanda. */
   fun quit() {
     if (inMatch) socket?.send(ClientMessage.Forfeit)
+    if (prefs.getString("activeRoom", null) == room) prefs.edit { remove("activeRoom") }
     // dá tempo de a mensagem sair antes de fechar a conexão
     viewModelScope.launch {
       delay(200)

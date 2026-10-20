@@ -115,6 +115,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.example.trimino.net.GameState
 import com.example.trimino.net.Intent
 import com.example.trimino.net.LogEntry
@@ -156,10 +159,17 @@ private fun signed(n: Int) = if (n < 0) "−${-n}" else "+$n"
 fun GameScreen(vm: GameViewModel) {
   val s = vm.state
   val haptic = LocalHapticFeedback.current
+  val lifecycle = LocalLifecycleOwner.current.lifecycle
   var confirmQuit by remember { mutableStateOf(false) }
   var confirmRestart by remember { mutableStateOf<String?>(null) }
   var panel by remember { mutableStateOf<String?>(null) }
   BackHandler { confirmQuit = true }
+
+  LaunchedEffect(lifecycle) {
+    lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+      vm.onResume()
+    }
+  }
 
   LaunchedEffect(vm.myTurnSeq) {
     if (vm.myTurnSeq > 0) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -948,7 +958,16 @@ private fun Side(vm: GameViewModel, s: GameState?, columns: Int, landscape: Bool
     if (vm.inCall && showCameras) {
       val entries = buildList {
         add(Triple(vm.myId, mesh.localVideo, true))
-        vm.remoteVideos.forEach { (id, track) -> add(Triple(id, track, false)) }
+        val known = mutableSetOf(vm.myId)
+        s?.players?.forEach { p ->
+          if (p.id != vm.myId && !p.bot && !p.out && (!p.spectator || p.inCall)) {
+            known += p.id
+            add(Triple(p.id, vm.remoteVideos[p.id], false))
+          }
+        }
+        vm.remoteVideos.forEach { (id, track) ->
+          if (id !in known) add(Triple(id, track, false))
+        }
       }
       val rowCols = if (landscape) columns else entries.size.coerceIn(1, columns)
       entries.chunked(rowCols).forEach { row ->
@@ -960,10 +979,38 @@ private fun Side(vm: GameViewModel, s: GameState?, columns: Int, landscape: Bool
             val p = s?.players?.firstOrNull { it.id == id }
             val seat = s?.players?.filter { !it.spectator }?.indexOfFirst { it.id == id } ?: -1
             val turn = s?.turnPlayerId == id
+            val offline = !self && p?.connected == false
             val ring = if (turn) Accent else if (seat >= 0) PlayerColors[seat % 4] else Color.White.copy(alpha = 0.18f)
-            Box(Modifier.weight(1f).aspectRatio(4f / 3f).clip(RoundedCornerShape(10.dp)).background(Color(0xFF071A13)).border(if (turn) 3.dp else 2.dp, ring, RoundedCornerShape(10.dp))) {
-              if (track != null && (!self || vm.videoOn)) VideoView(track, mesh.egl, mirror = self, modifier = Modifier.fillMaxSize())
-              else Box(Modifier.align(Alignment.Center)) { Initial(p?.name ?: "?", color = if (seat >= 0) PlayerColors[seat % 4] else Panel2, size = 28.dp) }
+            Box(
+              Modifier.weight(1f).aspectRatio(4f / 3f).alpha(if (offline) 0.55f else 1f)
+                .clip(RoundedCornerShape(10.dp)).background(Color(0xFF071A13))
+                .border(if (turn) 3.dp else 2.dp, ring, RoundedCornerShape(10.dp))
+            ) {
+              val hasVideo = track != null && (!self || vm.videoOn) && !offline
+              if (hasVideo) VideoView(track!!, mesh.egl, mirror = self, modifier = Modifier.fillMaxSize())
+              else {
+                Column(
+                  Modifier.align(Alignment.Center),
+                  horizontalAlignment = Alignment.CenterHorizontally,
+                  verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                  Initial(p?.name ?: "?", color = if (seat >= 0) PlayerColors[seat % 4] else Panel2, size = 28.dp)
+                  val statusText = when {
+                    self -> null
+                    offline -> "offline"
+                    p?.inCall == true -> "conectando…"
+                    else -> null
+                  }
+                  if (statusText != null) {
+                    Text(
+                      statusText,
+                      color = if (offline) Danger else Muted,
+                      fontSize = 9.sp,
+                      maxLines = 1,
+                    )
+                  }
+                }
+              }
               val role = when {
                 p == null -> null
                 p.spectator -> "Espectador"

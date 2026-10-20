@@ -98,6 +98,29 @@ fun VarandaScreen(site: SiteViewModel) {
       contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
       verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
+      site.activeRoom?.let { activeCode ->
+        item("rejoin") {
+          Row(
+            modifier =
+              Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Accent.copy(alpha = 0.14f))
+                .border(1.dp, Accent.copy(alpha = 0.6f), RoundedCornerShape(14.dp)).padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+          ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+              Text("Partida em andamento", color = Accent, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+              Text("Mesa $activeCode · toque para voltar ao seu lugar.", color = TextColor, fontSize = 13.sp)
+            }
+            GoldButton("Voltar à mesa", { site.open(Entry(activeCode, watch = false)) })
+            Icon(
+              Icons.Rounded.Close,
+              "Dispensar",
+              tint = Muted,
+              modifier = Modifier.size(20.dp).clickable { site.dismissActiveRoom() },
+            )
+          }
+        }
+      }
       site.notice?.let { msg ->
         item("notice") {
           Row(
@@ -161,7 +184,21 @@ fun VarandaScreen(site: SiteViewModel) {
           }
         }
       }
-      items(mesas, key = { it.code }) { m -> MesaCard(m, onEnter = { site.open(Entry(m.code, watch = false)) }, onWatch = { site.open(Entry(m.code, watch = true)) }) }
+      items(mesas, key = { it.code }) { m ->
+        val myName = site.name ?: ""
+        val isReturning =
+          site.hasSeat(m.code) ||
+            site.activeRoom == m.code ||
+            (myName.isNotEmpty() && m.players.any { !it.bot && it.name.equals(myName, ignoreCase = true) })
+        val hasOfflineHuman = m.players.any { !it.bot && !it.connected }
+        MesaCard(
+          m,
+          canEnter = m.seatsFree > 0 || isReturning || hasOfflineHuman,
+          enterLabel = if (m.seatsFree == 0 && isReturning) "Voltar à mesa" else "Entrar",
+          onEnter = { site.open(Entry(m.code, watch = false)) },
+          onWatch = { site.open(Entry(m.code, watch = true)) },
+        )
+      }
       item("stats") { StatsCard(site) }
       if (site.ranking.isNotEmpty()) item("ranking") { RankingCard(site) }
     }
@@ -214,7 +251,7 @@ private fun CodeCard(site: SiteViewModel) {
 }
 
 @Composable
-private fun MesaCard(m: MesaSummary, onEnter: () -> Unit, onWatch: () -> Unit) {
+private fun MesaCard(m: MesaSummary, canEnter: Boolean, enterLabel: String, onEnter: () -> Unit, onWatch: () -> Unit) {
   val open = m.phase == "lobby"
   Column(
     Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Panel)
@@ -236,7 +273,14 @@ private fun MesaCard(m: MesaSummary, onEnter: () -> Unit, onWatch: () -> Unit) {
       m.players.forEachIndexed { i, p ->
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
           Initial(p.name, color = PlayerColors[i % 4].copy(alpha = if (p.connected) 1f else 0.4f), size = 26.dp, bot = p.bot)
-          Text(p.name, color = if (p.connected) TextColor else Muted, fontSize = 15.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+          Text(
+            if (p.connected) p.name else "${p.name} (offline)",
+            color = if (p.connected) TextColor else Muted,
+            fontSize = 15.sp,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+          )
           if (m.phase != "lobby") Text("${p.score}", color = TextColor, fontWeight = FontWeight.Bold)
         }
       }
@@ -249,7 +293,7 @@ private fun MesaCard(m: MesaSummary, onEnter: () -> Unit, onWatch: () -> Unit) {
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       MutedText("👁 ${m.spectators} assistindo", Modifier.weight(1f), size = 13)
-      if (m.seatsFree > 0) GoldButton("Entrar", onEnter)
+      if (canEnter) GoldButton(enterLabel, onEnter)
       DarkButton("Assistir", onWatch)
     }
   }

@@ -42,6 +42,8 @@ class SiteViewModel(app: Application) : AndroidViewModel(app) {
     private set
   var stats by mutableStateOf<PlayerStats?>(null)
     private set
+  /** Nome da conta guardado no aparelho para resistir a oscilações de rede ao abrir o app. */
+  private var cachedUserName by mutableStateOf(prefs.getString("userName", null))
   /** Nome do convidado (sem conta), guardado no aparelho. */
   var guestName by mutableStateOf(if (prefs.getBoolean("guest", false)) prefs.getString("name", null) else null)
     private set
@@ -54,6 +56,9 @@ class SiteViewModel(app: Application) : AndroidViewModel(app) {
   var mesasOffline by mutableStateOf(false)
     private set
   var ranking by mutableStateOf<List<RankingRow>>(emptyList())
+    private set
+  /** Código da mesa com partida em andamento da qual a pessoa faz parte. */
+  var activeRoom by mutableStateOf(prefs.getString("activeRoom", null))
     private set
 
   /** Erro do formulário de entrada. */
@@ -75,7 +80,7 @@ class SiteViewModel(app: Application) : AndroidViewModel(app) {
 
   /** Nome com que a pessoa senta à mesa. */
   val name: String?
-    get() = user?.name ?: guestName
+    get() = user?.name ?: guestName ?: cachedUserName
 
   init {
     boot()
@@ -86,9 +91,18 @@ class SiteViewModel(app: Application) : AndroidViewModel(app) {
     viewModelScope.launch {
       runCatching { config = api.config() }
       val me = runCatching { api.me() }.getOrNull()
-      user = me?.user
-      stats = me?.stats
-      if (user != null) guestName = null
+      if (me != null) {
+        user = me.user
+        stats = me.stats
+        if (me.user != null) {
+          guestName = null
+          cachedUserName = me.user.name
+          prefs.edit { putString("userName", me.user.name) }
+        } else {
+          cachedUserName = null
+          prefs.edit { remove("userName") }
+        }
+      }
       screen = if (name != null) Screen.Varanda else Screen.Landing
       if (me == null && name == null) authError = "Sem conexão com o servidor."
       invitedTo?.let { if (name != null) open(it) }
@@ -118,9 +132,14 @@ class SiteViewModel(app: Application) : AndroidViewModel(app) {
     authError = null
     viewModelScope.launch {
       try {
-        user = block()
+        val u = block()
+        user = u
         guestName = null
-        prefs.edit { putBoolean("guest", false) }
+        cachedUserName = u.name
+        prefs.edit {
+          putBoolean("guest", false)
+          putString("userName", u.name)
+        }
         stats = runCatching { api.me().stats }.getOrNull()
         enteredSite()
       } catch (e: Exception) {
@@ -166,18 +185,37 @@ class SiteViewModel(app: Application) : AndroidViewModel(app) {
     user = null
     stats = null
     guestName = null
-    prefs.edit { putBoolean("guest", false) }
+    cachedUserName = null
+    prefs.edit {
+      putBoolean("guest", false)
+      remove("userName")
+    }
     screen = Screen.Landing
   }
 
   // ---------------- varanda ----------------
 
+  fun hasSeat(code: String): Boolean = prefs.getString("seat.$code", null) != null
+
+  fun dismissActiveRoom() {
+    activeRoom = null
+    prefs.edit { remove("activeRoom") }
+  }
+
   fun refreshMesas() {
+    activeRoom = prefs.getString("activeRoom", null)
     viewModelScope.launch {
       runCatching { api.mesas() }
-        .onSuccess {
-          mesas = it
+        .onSuccess { list ->
+          mesas = list
           mesasOffline = false
+          val cur = activeRoom
+          if (cur != null) {
+            val m = list.firstOrNull { it.code == cur }
+            if (m != null && (m.phase == "lobby" || m.phase == "gameOver")) {
+              dismissActiveRoom()
+            }
+          }
         }
         .onFailure { mesasOffline = true }
     }
@@ -185,13 +223,16 @@ class SiteViewModel(app: Application) : AndroidViewModel(app) {
 
   /** Ranking e estatísticas: ao abrir a varanda e ao voltar de uma mesa. */
   fun refreshProfile() {
+    activeRoom = prefs.getString("activeRoom", null)
     viewModelScope.launch {
       runCatching { ranking = api.ranking() }
-      if (user != null) runCatching { api.me() }.onSuccess { me ->
+      if (user != null || cachedUserName != null) runCatching { api.me() }.onSuccess { me ->
         // A sessão pode ter caído (ex.: entrou com o Google em outro lugar e a senha foi apagada).
         if (me.user == null) logout() else {
           user = me.user
           stats = me.stats
+          cachedUserName = me.user.name
+          prefs.edit { putString("userName", me.user.name) }
         }
       }
     }
